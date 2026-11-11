@@ -118,90 +118,192 @@ const NON_NAME_WORDS = new Set([
   "little", "big", "small", "beautiful", "important", "adventure"
 ]);
 
+
+// ------------------------------------------------------------
+// UNIVERSAL STORY UNDERSTANDING
+// Optional backend: set STORY_AI_ENDPOINT to your own secure API route.
+// Never put a private AI API key in this browser file.
+// ------------------------------------------------------------
+const STORY_AI_ENDPOINT = ""; // Example: "/api/analyze-story"
+
+const VISUAL_STYLE = "High-quality cinematic 3D animated storybook illustration, expressive characters, detailed environment, soft dramatic lighting, rich natural colors, coherent camera composition, family-friendly.";
+
+const ENVIRONMENT_DB = [
+  { name: "Forest", aliases: ["forest", "woods", "woodland", "trees"] },
+  { name: "Jungle", aliases: ["jungle", "rainforest", "tropical forest"] },
+  { name: "River", aliases: ["river", "stream", "waterfall", "riverbank"] },
+  { name: "Village", aliases: ["village", "town", "farm", "cottage"] },
+  { name: "Mountain", aliases: ["mountain", "hill", "cliff", "cave"] },
+  { name: "Ocean", aliases: ["ocean", "sea", "beach", "shore"] },
+  { name: "Desert", aliases: ["desert", "sand dunes"] },
+  { name: "Meadow", aliases: ["meadow", "grassland", "field", "prairie"] }
+];
+
+function safeText(id) {
+  const el = document.getElementById(id);
+  return el && typeof el.value === "string" ? el.value : "";
+}
+
+function containsPhrase(text, phrase) {
+  if (!text || !phrase) return false;
+  const escaped = String(phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu").test(String(text));
+}
+
+function splitStory(story) {
+  const clean = String(story || "").replace(/\r/g, "").trim();
+  if (!clean) return [];
+  // Prefer blank-line paragraphs; otherwise split at sentence boundaries.
+  let parts = clean.split(/\n\s*\n+/).map(x => x.trim()).filter(Boolean);
+  if (parts.length < 2) {
+    parts = (clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [clean])
+      .map(x => x.trim()).filter(Boolean);
+    const grouped = [];
+    for (let i = 0; i < parts.length; i += 2) grouped.push(parts.slice(i, i + 2).join(" "));
+    parts = grouped;
+  }
+  return parts;
+}
+
+const GENERIC_ENTITY_WORDS = new Set([
+  ...NON_NAME_WORDS, "fox", "lion", "elephant", "deer", "beaver", "rabbit",
+  "bird", "wolf", "bear", "monkey", "dragon", "boy", "girl", "man", "woman",
+  "mother", "father", "mama", "papa", "king", "queen", "forest", "river",
+  "jungle", "village", "mountain", "day", "night", "morning", "evening",
+  "sun", "moon", "wind", "rain", "story", "scene"
+]);
+
+function heuristicStoryCharacters(story) {
+  const source = String(story || "");
+  const found = [];
+  const add = (name, type = "individual") => {
+    name = String(name || "").trim().replace(/\s+/g, " ").replace(/[.,!?;:]+$/, "");
+    if (!name || name.length > 45) return;
+    if (!found.some(x => x.name.toLowerCase() === name.toLowerCase())) found.push({ name, type });
+  };
+
+  // Animal identities: recognize animal kinds only when the story refers to them.
+  const animals = [
+    "Fox", "Lion", "Elephant", "Deer", "Beaver", "Rabbit", "Bird", "Wolf", "Bear",
+    "Monkey", "Dragon", "Tiger", "Horse", "Dog", "Cat", "Mouse", "Rat", "Squirrel",
+    "Owl", "Eagle", "Duck", "Goose", "Swan", "Hedgehog", "Turtle", "Tortoise",
+    "Snake", "Frog", "Dolphin", "Whale", "Shark", "Giraffe", "Zebra", "Giraffe",
+    "Crocodile", "Alligator", "Penguin", "Panda", "Koala", "Kangaroo", "Camel", "Donkey",
+    "Chicken", "Rooster", "Hen", "Sheep", "Goat", "Cow", "Pig", "Boar", "Raccoon",
+    "Badger", "Otter", "Bees", "Butterfly", "Parrot", "Peacock", "Woodpecker"
+  ];
+  for (const animal of new Set(animals)) {
+    const re = new RegExp(`\\b(?:a|an|the|one|little|baby|young|old|small|big|another|some|many|two|three)?\\s*${animal.toLowerCase()}s?\\b`, "i");
+    if (re.test(source)) add(animal, "animal");
+  }
+
+  // Family/relationship roles count only when the story uses them as a person/animal.
+  const roles = [
+    ["Mother", /\b(?:his|her|their|the)\s+mother\b|\bmother\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Father", /\b(?:his|her|their|the)\s+father\b|\bfather\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Mama", /\b(?:his|her|their|the)\s+mama\b|\bmama\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Papa", /\b(?:his|her|their|the)\s+papa\b|\bpapa\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Grandmother", /\b(?:his|her|their|the)\s+grandmother\b|\bgrandmother\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Grandfather", /\b(?:his|her|their|the)\s+grandfather\b|\bgrandfather\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Grandma", /\b(?:his|her|their|the)\s+grandma\b|\bgrandma\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Grandpa", /\b(?:his|her|their|the)\s+grandpa\b|\bgrandpa\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Sister", /\b(?:his|her|their|the)\s+sister\b|\bsister\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Brother", /\b(?:his|her|their|the)\s+brother\b|\bbrother\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Uncle", /\b(?:his|her|their|the)\s+uncle\b|\buncle\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig],
+    ["Aunt", /\b(?:his|her|their|the)\s+aunt\b|\baunt\s+(?:said|asked|replied|came|looked|smiled|called|told|hugged)\b/ig]
+  ];
+  for (const [role, re] of roles) if (re.test(source)) add(role, "family");
+
+  // Compound family + animal identities, e.g. "Mama Fox"; keep as one character.
+  const roleWords = "Mama|Mom|Mother|Papa|Dad|Father|Grandma|Grandmother|Grandpa|Grandfather";
+  const animalWords = animals.join("|");
+  const compoundRe = new RegExp(`\\b(${roleWords})\\s+(${animalWords})\\b`, "gi");
+  for (const match of source.matchAll(compoundRe)) {
+    const role = match[1][0].toUpperCase() + match[1].slice(1).toLowerCase();
+    const animal = match[2][0].toUpperCase() + match[2].slice(1).toLowerCase();
+    const combined = `${role} ${animal}`;
+    // Replace separate role/animal entries when the story consistently uses a compound identity.
+    const roleIndex = found.findIndex(x => x.name.toLowerCase() === role.toLowerCase());
+    if (roleIndex >= 0) found.splice(roleIndex, 1);
+    const animalIndex = found.findIndex(x => x.name.toLowerCase() === animal.toLowerCase());
+    if (animalIndex >= 0) found.splice(animalIndex, 1);
+    add(combined, "individual");
+  }
+
+  // Explicitly introduced proper names and clear name-as-speaker patterns.
+  const namePatterns = [
+    /\b(?:named|called)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/g,
+    /\b(?:his name was|her name was|their name was|name was)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/gi,
+    /\b([A-Z][a-z]{1,20})\s+(?:said|asked|replied|whispered|shouted|cried|laughed|smiled)\b/g
+  ];
+  for (const re of namePatterns) for (const match of source.matchAll(re)) {
+    const candidate = match[1];
+    if (!NON_NAME_WORDS.has(candidate.toLowerCase()) && !animals.some(a => a.toLowerCase() === candidate.toLowerCase())) add(candidate, "individual");
+  }
+  return found;
+}
+
+async function askStoryAI(story) {
+  if (!STORY_AI_ENDPOINT) return null;
+  const response = await fetch(STORY_AI_ENDPOINT, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      story,
+      task: "Extract story entities and scenes. Return JSON only.",
+      schema: {
+        characters: [{ name: "string", type: "individual|group", description: "string", aliases: ["string"] }],
+        scenes: [{ text: "string", characterNames: ["string"], environmentNames: ["string"] }],
+        environments: ["string"]
+      },
+      rules: [
+        "Read the entire story before deciding who is a character.",
+        "Do not classify every capitalized word as a character.",
+        "Exclude articles, pronouns, verbs, adjectives, adverbs, conjunctions and prepositions.",
+        "Use context: a word can be a name in one story and an ordinary word in another.",
+        "Keep compound identities together, for example Mama Fox is one character, not Mama and Fox.",
+        "Include animal characters and family-role characters when the story identifies them as participants: mother, father, mama, papa, grandma, grandpa, grandmother, grandfather, sister, brother, aunt and uncle.",
+        "A phrase such as his mother or his father identifies a character when that person acts, speaks or is referred to as a story participant.",
+        "Do not classify ordinary grammar words, adjectives, adverbs, verbs, places or objects as characters.",
+        "Keep compound identities together, for example Mama Fox is one character, not separate Mama and Fox.",
+        "Distinguish named individuals from generic animal groups such as beavers, deer, birds and rabbits.",
+        "Resolve pronouns using earlier story context when assigning characters to scenes.",
+        "Do not invent characters or add background characters not supported by the story."
+      ]
+    })
+  });
+  if (!response.ok) throw new Error(`AI analysis failed (${response.status})`);
+  const data = await response.json();
+  return data.result || data;
+}
+
 function resetCharacterDB() {
   // Prevent characters discovered in an older story leaking into a new story.
   CHARACTER_DB = BUILTIN_CHARACTERS.map(c => ({ ...c, aliases: [...c.aliases] }));
 }
 
 function discoverCustomCharacters(text) {
-  const source = String(text || "");
-  const candidates = new Map();
-
-  const addCandidate = (rawName, explicit = false) => {
-    const name = String(rawName || "").trim().replace(/\s+/g, " ");
-    if (!name) return;
-
-    const words = name.split(" ");
-    const first = words[0].toLowerCase();
-    const normalized = name.toLowerCase();
-
-    // Exclude grammar words, sentence starters and non-name phrases.
-    if (NON_NAME_WORDS.has(first) || words.some(w => NON_NAME_WORDS.has(w.toLowerCase()))) return;
-    if (words.length > 4 || !/^[A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,3}$/.test(name)) return;
-
-    const existing = CHARACTER_DB.some(c =>
-      c.name.toLowerCase() === normalized ||
-      c.aliases.some(alias => alias.toLowerCase() === normalized)
+  const candidates = heuristicStoryCharacters(text);
+  for (const item of candidates) {
+    const exists = CHARACTER_DB.some(c =>
+      c.name.toLowerCase() === item.name.toLowerCase() ||
+      c.aliases.some(alias => alias.toLowerCase() === item.name.toLowerCase())
     );
-    if (existing) return;
-
-    const previous = candidates.get(normalized) || { name, count: 0, explicit: false };
-    previous.count += 1;
-    previous.explicit = previous.explicit || explicit;
-    candidates.set(normalized, previous);
-  };
-
-  // Strong evidence: explicit character introductions.
-  const explicitPatterns = [
-    /\b(?:named|called)\s+([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,3})/g,
-    /\b(?:his|her|their)\s+name\s+(?:was|is)\s+([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,3})/g,
-    /\b(?:this|the)\s+(?:boy|girl|man|woman|king|queen|prince|princess|wizard|witch|dragon|lion|tiger|elephant|monkey|rabbit|fox|wolf|bear|bird|dog|cat|robot|alien)\s+is\s+([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,2})/gi
-  ];
-  for (const pattern of explicitPatterns) {
-    for (const match of source.matchAll(pattern)) addCandidate(match[1], true);
-  }
-
-  // Also find recurring proper names anywhere in the story, not just after
-  // "named/called". Ignore the first capitalized word of each sentence.
-  const sentencePattern = /[^.!?\n]+[.!?]?/g;
-  for (const sentenceMatch of source.matchAll(sentencePattern)) {
-    const sentence = sentenceMatch[0].trim();
-    const wordPattern = /\b[A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,2}\b/g;
-    const matches = [...sentence.matchAll(wordPattern)];
-    for (const match of matches) {
-      const candidate = match[0].trim();
-      // A capitalized first word is usually just sentence capitalization.
-      if (match.index === 0) continue;
-      addCandidate(candidate, false);
-    }
-  }
-
-  for (const item of candidates.values()) {
-    // A single occurrence is accepted only when introduced explicitly.
-    if (!item.explicit && item.count < 2) continue;
-    CHARACTER_DB.push({
+    if (!exists) CHARACTER_DB.push({
       name: item.name,
       aliases: [item.name],
-      description: `Consistent original story character: ${item.name}. Infer the character's species, age, role, clothing and visual traits from the story wherever stated. Keep the same face, body shape, colors, clothing, hairstyle, age and proportions in every scene. Do not redesign this character between scenes.`
+      description: `A story character named ${item.name}. Keep the same identity, face, species, age, colors, clothing and proportions in every scene.`
     });
   }
 }
 
 function detectCharacters(text) {
-  const source = String(text || "");
   const found = [];
-
   for (const character of CHARACTER_DB) {
-    const matched = character.aliases.some(alias => {
-      const cleanAlias = String(alias || "").trim();
-      if (!cleanAlias) return false;
-      const parts = cleanAlias.split(/\s+/);
-      if (parts.some(part => NON_NAME_WORDS.has(part.toLowerCase()))) return false;
-      return containsPhrase(source, cleanAlias);
-    });
-    if (matched) found.push(character.name);
+    if (character.aliases.some(alias => containsPhrase(text, alias))) {
+      found.push(character.name);
+    }
   }
-
   return [...new Set(found)];
 }
 
@@ -264,57 +366,115 @@ Keep the jungle, river, rocks, trees, water and lighting geographically coherent
 VISUAL DIRECTION:
 ${VISUAL_STYLE}
 
-LANGUAGE AND CHARACTER DETECTION RULE:
-Understand the complete English text naturally. Every English word must be interpreted according to its grammatical meaning and the story context. A word is a CHARACTER only when it is clearly a proper name or an explicitly identified story entity. Do NOT turn ordinary English words into characters. This includes articles, pronouns, verbs, adjectives, adverbs, conjunctions, prepositions, transition words, sentence starters, time words, and abstract nouns. Examples that are NOT characters unless the story clearly establishes them as proper names: Without, Together, When, But, Carefully, That, From, Adventure, Suddenly, Finally, Beautiful, River, Forest, Morning and Happiness.
-
-Use only actual characters discovered from the story and listed in GLOBAL CHARACTER REFERENCE. Do not invent extra characters, split one character into multiple characters, or treat a species/role word as a separate character when it refers to an already identified character. Preserve each character's exact identity and visual design throughout the story. Infer visual details only from the story; do not contradict details the story gives. Depict the exact action described in this scene.`;
+IMPORTANT:
+Only the named story characters listed in GLOBAL CHARACTER REFERENCE are characters. Words such as Without, Together, When, But, Carefully, That, From and Adventure are ordinary English words, NOT characters. Never create a character from a sentence starter, pronoun, adjective, adverb, conjunction, preposition or other grammar word. Do not change character faces, fur colors, clothing, age, hairstyle or proportions. Depict the exact action described in this scene.`;
 }
 
-function analyze() {
+async function analyze() {
   const story = safeText("story").trim();
-
   if (!story) {
     alert("Please paste your story first.");
     return;
   }
 
-  resetCharacterDB();
-  discoverCustomCharacters(story);
+  const button = $("analyzeBtn");
+  const originalLabel = button ? button.textContent : "";
+  if (button) { button.disabled = true; button.textContent = "✦ Understanding story..."; }
 
-  const chunks = splitStory(story);
-  if (!chunks.length) {
-    alert("Please enter a readable story.");
-    return;
+  try {
+    resetCharacterDB();
+    const chunks = splitStory(story);
+    if (!chunks.length) throw new Error("Please enter a readable story.");
+
+    let aiData = null;
+    try {
+      aiData = await askStoryAI(story);
+    } catch (err) {
+      console.warn("AI endpoint unavailable; using local story analysis.", err);
+    }
+
+    let allNames = [];
+    let sceneCast = [];
+    let allPlaces = [];
+
+    if (aiData && Array.isArray(aiData.characters)) {
+      for (const item of aiData.characters) {
+        if (!item || !item.name) continue;
+        const name = String(item.name).trim();
+        if (!name) continue;
+        const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+        CHARACTER_DB.push({
+          name,
+          aliases: [...new Set([name, ...aliases].filter(Boolean))],
+          description: item.description || `A consistent story character: ${name}. Preserve the same design in every scene.`
+        });
+      }
+      allNames = [...new Set(aiData.characters.map(c => c && c.name).filter(Boolean))];
+      const aiScenes = Array.isArray(aiData.scenes) ? aiData.scenes : [];
+      sceneCast = chunks.map((scene, i) => {
+        const match = aiScenes[i];
+        return match && Array.isArray(match.characterNames)
+          ? match.characterNames.filter(n => allNames.includes(n))
+          : [];
+      });
+      allPlaces = Array.isArray(aiData.environments) ? aiData.environments : [];
+    } else {
+      discoverCustomCharacters(story);
+      allNames = [...new Set(CHARACTER_DB
+        .filter(c => !BUILTIN_CHARACTERS.some(b => b.name === c.name) || detectCharacters(story).includes(c.name))
+        .filter(c => containsPhrase(story, c.name) || c.aliases.some(a => containsPhrase(story, a)))
+        .map(c => c.name))];
+      sceneCast = chunks.map(scene => detectCharacters(scene).filter(n => allNames.includes(n)));
+      allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
+    }
+
+    const customDescriptions = aiData && Array.isArray(aiData.characters)
+      ? new Map(aiData.characters.map(c => [c.name, c.description || ""]))
+      : new Map();
+
+    currentProject = {
+      id: Date.now(),
+      name: safeText("projectName").trim() || "Untitled Story",
+      story,
+      characters: allNames.map(name => ({
+        name,
+        description: customDescriptions.get(name) || characterDescription(name)
+      })),
+      environments: allPlaces,
+      scenes: chunks.map((scene, i) => ({
+        title: `Scene ${i + 1}`,
+        description: scene,
+        characters: sceneCast[i] || [],
+        environments: (aiData && aiData.scenes && aiData.scenes[i] && aiData.scenes[i].environmentNames)
+          || detectEnvironments(scene),
+        prompt: makePrompt(scene, i, allNames, allPlaces)
+      })),
+      created: new Date().toISOString(),
+      analysisMode: aiData ? "ai" : "local-fallback"
+    };
+
+    // Use the AI's scene-specific cast in the final prompts.
+    currentProject.scenes.forEach((scene, i) => {
+      if (scene.characters.length) {
+        scene.prompt = scene.prompt.replace(
+          /CHARACTERS TO SHOW IN THIS SCENE:[\s\S]*?(?=\n\nENVIRONMENT AND CONTINUITY:)/,
+          `CHARACTERS TO SHOW IN THIS SCENE:\n${scene.characters.join(", ")}.\nShow only these characters if they are explicitly present in the scene.`
+        );
+      }
+    });
+
+    renderProject();
+    if ($("results")) {
+      $("results").classList.remove("hidden");
+      $("results").scrollIntoView({ behavior: "smooth" });
+    }
+    if ($("characters")) $("characters").classList.remove("hidden");
+  } catch (error) {
+    console.error(error);
+    alert(error.message || "Could not analyze this story.");
+  } finally {
+    if (button) { button.disabled = false; button.textContent = originalLabel || "✦ Generate storyboard"; }
   }
-
-  const allNames = [...new Set(chunks.flatMap(scene => detectCharacters(scene)))];
-  const allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
-
-  currentProject = {
-    id: Date.now(),
-    name: safeText("projectName").trim() || "Untitled Story",
-    story,
-    characters: allNames.map(name => ({
-      name,
-      description: characterDescription(name)
-    })),
-    environments: allPlaces,
-    scenes: chunks.map((scene, i) => ({
-      title: `Scene ${i + 1}`,
-      description: scene,
-      characters: detectCharacters(scene),
-      environments: detectEnvironments(scene),
-      prompt: makePrompt(scene, i, allNames, allPlaces)
-    })),
-    created: new Date().toISOString()
-  };
-
-  renderProject();
-  if ($("results")) {
-    $("results").classList.remove("hidden");
-    $("results").scrollIntoView({ behavior: "smooth" });
-  }
-  if ($("characters")) $("characters").classList.remove("hidden");
 }
 
 function renderProject() {
