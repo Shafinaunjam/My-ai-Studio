@@ -8,20 +8,52 @@ const translations = {
   ur:{headline:"اپنی کہانی کو اسٹوری بورڈ میں بدلیں۔",intro:"اپنی کہانی لکھیں یا پیسٹ کریں۔ My AI Studio اسے مناظر، کرداروں اور visual prompts میں ترتیب دے گا۔",storyTitle:"۱. آپ کی کہانی",storyHint:"نیچے اپنی کہانی لکھیں۔",analyze:"✦ اسٹوری بورڈ بنائیں"}
 };
 
-// Character names are detected ONLY from this database or explicit
-// "named/called" introductions. Ordinary capitalized words are ignored.
+// Character reference library.
+// The same full character descriptions are added to every scene prompt
+// so an image generator has a consistent reference across the storyboard.
 const CHARACTER_DB = [
-  {name:"Arin", aliases:["Arin"], description:"17-year-old orphan boy, messy dark hair, brown eyes, simple dark medieval clothes. Keep his face, hairstyle, age and outfit consistent. In later scenes he may carry a magical silver sword."},
-  {name:"Drakor", aliases:["Drakor","silver dragon","the dragon"], description:"Enormous majestic silver dragon with glowing blue eyes, detailed silver scales and powerful wings. Keep the same head, horns, scale pattern, eye color and proportions in every scene."},
-  {name:"Lyra", aliases:["Lyra"], description:"Mysterious young girl wearing a dark blue cloak and carrying a glowing crystal staff. Keep her face, hair, cloak and staff design consistent."},
-  {name:"Malgor", aliases:["Malgor"], description:"Terrifying evil sorcerer with long white hair, black armor and glowing red eyes. Keep his face, hair, armor and eye color consistent."},
-  {name:"Shadow Monsters", aliases:["shadow monsters","army of shadow monsters"], description:"An army of dark smoky shadow creatures with glowing eyes. Keep their smoky bodies, silhouettes and glowing eyes visually consistent."}
+  {
+    name:"Max",
+    aliases:["Max","little dog","the dog"],
+    description:"Max is a small, adorable golden-brown fluffy dog with soft medium-length fur, floppy ears, expressive dark-brown eyes, a small black nose and a compact puppy-like body. Keep exactly the same fur color and texture, face shape, ear shape, eye color, nose, body size and proportions in every scene. Do not redesign Max."
+  },
+  {
+    name:"Leo",
+    aliases:["Leo"],
+    description:"Leo is an eight-year-old boy with short, slightly messy black hair, warm brown eyes and a friendly youthful face. He wears the same bright red shirt, blue shorts and simple brown shoes in every scene. Keep his age, face, hairstyle, skin tone, clothing colors and body proportions identical. Do not redesign Leo."
+  },
+  {
+    name:"Grandpa",
+    aliases:["Grandpa","Grandfather","old man"],
+    description:"Grandpa is a kind elderly man with neatly combed grey hair, a full soft grey beard and moustache, warm expressive eyes and a gentle face. He wears the same simple brown traditional shirt, dark trousers and brown shoes in every scene. Keep his age, face, beard, hairstyle, clothing and body proportions identical. Do not redesign Grandpa."
+  },
+  {
+    name:"Arin", aliases:["Arin"],
+    description:"17-year-old orphan boy, messy dark hair, brown eyes, simple dark medieval clothes. Keep his face, hairstyle, age and outfit consistent. In later scenes he may carry a magical silver sword."
+  },
+  {
+    name:"Drakor", aliases:["Drakor","silver dragon","the dragon"],
+    description:"Enormous majestic silver dragon with glowing blue eyes, detailed silver scales and powerful wings. Keep the same head, horns, scale pattern, eye color and proportions in every scene."
+  },
+  {
+    name:"Lyra", aliases:["Lyra"],
+    description:"Mysterious young girl wearing a dark blue cloak and carrying a glowing crystal staff. Keep her face, hair, cloak and staff design consistent."
+  },
+  {
+    name:"Malgor", aliases:["Malgor"],
+    description:"Terrifying evil sorcerer with long white hair, black armor and glowing red eyes. Keep his face, hair, armor and eye color consistent."
+  },
+  {
+    name:"Shadow Monsters", aliases:["shadow monsters","army of shadow monsters"],
+    description:"An army of dark smoky shadow creatures with glowing eyes. Keep their smoky bodies, silhouettes and glowing eyes visually consistent."
+  }
 ];
 
 const ENVIRONMENT_DB = [
   {name:"Ancient Kingdom", aliases:["kingdom","ancient kingdom","ancient kingdoms"]},
   {name:"Small Village", aliases:["small village","village"]},
-  {name:"Forbidden Forest", aliases:["Forbidden Forest"]},
+  {name:"Riverside", aliases:["riverside","river bank","riverbank","by the river"]},
+  {name:"Forbidden Forest", aliases:["forbidden forest"]},
   {name:"Ancient Cave", aliases:["ancient cave","cave"]},
   {name:"Dark Castle", aliases:["dark castle","castle"]},
   {name:"Mountains", aliases:["mountains","mountain"]}
@@ -38,10 +70,9 @@ $("language").addEventListener("change", e => {
 
 function splitStory(text) {
   let clean = text.trim().replace(/\r/g, "");
-
-  // Protect common titles/abbreviations so "Mr. Anderson" stays together.
   const abbreviations = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "St.", "Jr.", "Sr."];
   const placeholders = [];
+
   abbreviations.forEach((abbr, i) => {
     const token = `__ABBR_${i}__`;
     const escaped = abbr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -54,7 +85,6 @@ function splitStory(text) {
     .map(x => x.trim())
     .filter(Boolean);
 
-  // Remove a standalone short title from the scene list.
   if (chunks.length > 1 && chunks[0].length <= 90 && !/[.!?।]$/.test(chunks[0])) {
     chunks.shift();
   }
@@ -67,11 +97,8 @@ function splitStory(text) {
     }
   }
 
-  // Restore abbreviations after splitting.
   chunks = chunks.map(chunk => {
-    for (const [token, abbr] of placeholders) {
-      chunk = chunk.replaceAll(token, abbr);
-    }
+    for (const [token, abbr] of placeholders) chunk = chunk.replaceAll(token, abbr);
     return chunk;
   });
 
@@ -113,9 +140,7 @@ function discoverCustomCharacters(text) {
 function detectCharacters(text) {
   const found = [];
   for (const character of CHARACTER_DB) {
-    if (character.aliases.some(alias => containsPhrase(text, alias))) {
-      found.push(character.name);
-    }
+    if (character.aliases.some(alias => containsPhrase(text, alias))) found.push(character.name);
   }
   return found;
 }
@@ -131,27 +156,54 @@ function characterDescription(name) {
     `Maintain the same visual design for ${name} in every scene.`;
 }
 
-function makePrompt(scene, index) {
-  const names = detectCharacters(scene);
-  const places = detectEnvironments(scene);
+// Every scene prompt receives the complete cast reference list.
+// The scene-specific instruction prevents characters from appearing
+// in scenes where they are not part of the action.
+function makePrompt(scene, index, allNames, allPlaces) {
+  const sceneNames = detectCharacters(scene);
+  const scenePlaces = detectEnvironments(scene);
 
-  const characterBlock = names.length
-    ? names.map(name => `${name}: ${characterDescription(name)}`).join("\n")
-    : "No named character is explicitly identified in this scene. Do not invent character names.";
+  const characterBlock = allNames.length
+    ? allNames.map(name =>
+        `${name}: ${characterDescription(name)}`
+      ).join("\n")
+    : "No named characters detected. Follow the story description and keep any recurring character design consistent.";
 
-  const environmentBlock = places.length
-    ? places.join(", ")
-    : "Environment should follow the location described in the scene.";
+  const sceneCast = sceneNames.length
+    ? sceneNames.join(", ")
+    : "Only characters required by the scene description";
 
-  return `MY AI STUDIO CHARACTER ENGINE V3. Cinematic story illustration, scene ${index+1}. ${scene}
+  const environmentBlock = scenePlaces.length
+    ? scenePlaces.join(", ")
+    : (allPlaces.length
+        ? `Use the story's established locations when appropriate: ${allPlaces.join(", ")}.`
+        : "Use the location described in this scene.");
 
-CHARACTER CONSISTENCY:
+  return `MY AI STUDIO — CHARACTER CONSISTENCY ENGINE.
+Create a cinematic story illustration for Scene ${index + 1}, in a consistent visual style.
+
+SCENE ACTION:
+${scene}
+
+FULL CHARACTER REFERENCE — KEEP THESE DESIGNS IDENTICAL IN EVERY SCENE:
 ${characterBlock}
 
-ENVIRONMENT:
+CHARACTERS VISIBLE IN THIS SCENE:
+${sceneCast}
+Show only the characters who belong in this scene. Do not add every character automatically.
+
+ESTABLISHED STORY ENVIRONMENTS:
+${allPlaces.length ? allPlaces.join(", ") : "Follow the story locations."}
+
+THIS SCENE'S ENVIRONMENT:
 ${environmentBlock}
 
-Detailed environment, expressive emotion, dramatic cinematic lighting, coherent composition, high visual quality.`;
+CONTINUITY RULES:
+- Preserve each recurring character's exact face, age, hairstyle, fur, eye color, outfit, colors and body proportions.
+- Do not redesign characters or change their clothes between scenes unless the story explicitly says so.
+- Keep the same overall art style, visual quality and cinematic world throughout the storyboard.
+- Use expressive emotions, clear storytelling, detailed backgrounds and cinematic lighting.
+- Landscape 16:9 composition. No captions, no written words, no logos and no watermark.`;
 }
 
 function analyze() {
@@ -164,19 +216,20 @@ function analyze() {
   discoverCustomCharacters(story);
   const chunks = splitStory(story);
   const allNames = [...new Set(chunks.flatMap(scene => detectCharacters(scene)))];
+  const allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
 
   currentProject = {
     id:Date.now(),
     name:$("projectName").value.trim() || "Untitled Story",
     story,
     characters:allNames.map(name => ({name,description:characterDescription(name)})),
-    environments:[...new Set(chunks.flatMap(scene => detectEnvironments(scene)))],
+    environments:allPlaces,
     scenes:chunks.map((scene,i) => ({
       title:`Scene ${i+1}`,
       description:scene,
       characters:detectCharacters(scene),
       environments:detectEnvironments(scene),
-      prompt:makePrompt(scene,i)
+      prompt:makePrompt(scene,i,allNames,allPlaces)
     })),
     created:new Date().toISOString()
   };
