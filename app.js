@@ -51,8 +51,23 @@ const BUILTIN_CHARACTERS = [
   },
   {
     name: "Mia",
-    aliases: ["Mia", "little girl", "the girl"],
+    aliases: ["Mia"],
     description: "A little girl with straight black hair, a pink dress and white shoes. Keep exactly the same face, hairstyle, hair length, dress design, clothing colors, age and body proportions in every scene."
+  },
+  {
+    name: "Coco",
+    aliases: ["Coco"],
+    description: "A small clever monkey with warm brown fur, a cream-colored face and chest, large expressive brown eyes, small rounded ears and a long flexible tail. Keep exactly the same face, fur colors, eye color, body size, tail and proportions in every scene. Do not turn Coco into a human or another animal."
+  },
+  {
+    name: "Mama Elephant",
+    aliases: ["Mama Elephant", "mother elephant", "elephant mother"],
+    description: "A large gentle adult female elephant with soft gray skin, broad fan-shaped ears, kind dark eyes, a long trunk and sturdy legs. She has no tusks unless the story explicitly says otherwise. Keep exactly the same face, skin tone, ear shape, trunk, body size and proportions in every scene."
+  },
+  {
+    name: "Bobo",
+    aliases: ["Bobo", "baby elephant", "elephant calf"],
+    description: "A cute small gray baby elephant with a round little body, oversized soft ears, a short trunk, large expressive dark eyes and short sturdy legs. Keep exactly the same face, skin tone, ear shape, trunk length, body size and proportions in every scene."
   },
   {
     name: "Arin",
@@ -81,151 +96,112 @@ const BUILTIN_CHARACTERS = [
   }
 ];
 
-const CHARACTER_DB = BUILTIN_CHARACTERS.map(c => ({ ...c, aliases: [...c.aliases] }));
+let CHARACTER_DB = BUILTIN_CHARACTERS.map(c => ({ ...c, aliases: [...c.aliases] }));
 
-const ENVIRONMENT_DB = [
-  { name: "Jungle", aliases: ["jungle", "forest"] },
-  { name: "River", aliases: ["river", "riverbank", "waterfall", "stream"] },
-  { name: "Small Village", aliases: ["small village", "village"] },
-  { name: "Ancient Kingdom", aliases: ["kingdom", "ancient kingdom", "ancient kingdoms"] },
-  { name: "Forbidden Forest", aliases: ["forbidden forest"] },
-  { name: "Ancient Cave", aliases: ["ancient cave", "cave"] },
-  { name: "Dark Castle", aliases: ["dark castle", "castle"] },
-  { name: "Mountains", aliases: ["mountains", "mountain"] }
-];
+// Words that may begin a sentence but are not character names.
+// This list is intentionally conservative: custom characters are added only
+// when introduced with "named" or "called" and the candidate is not a stop word.
+const NON_NAME_WORDS = new Set([
+  "a", "an", "the", "this", "that", "these", "those", "when", "while",
+  "where", "what", "who", "why", "how", "after", "before", "although",
+  "because", "since", "until", "unless", "without", "within", "together",
+  "suddenly", "finally", "carefully", "slowly", "quickly", "happily",
+  "sadly", "gently", "quietly", "bravely", "from", "into", "onto", "over",
+  "under", "through", "across", "around", "behind", "beside", "between",
+  "but", "and", "or", "so", "yet", "then", "now", "once", "one", "some",
+  "many", "all", "both", "each", "every", "another", "their", "there",
+  "here", "he", "she", "it", "they", "them", "his", "her", "its", "we",
+  "you", "i", "me", "my", "our", "your", "back", "again", "at", "on", "in",
+  "as", "is", "was", "were", "are", "be", "been", "being", "do", "does",
+  "did", "has", "have", "had", "can", "could", "will", "would", "shall",
+  "should", "may", "might", "must", "not", "very", "too", "more", "most",
+  "little", "big", "small", "beautiful", "important", "adventure"
+]);
 
-const VISUAL_STYLE =
-  "High-quality 3D animated family movie, cinematic composition, expressive emotions, detailed environment, beautiful natural lighting, consistent character design, professional animation-film quality, 16:9 widescreen, no text, no subtitles, no logo, no watermark.";
-
-function safeText(id) {
-  const element = $(id);
-  return element ? element.value : "";
+function resetCharacterDB() {
+  // Prevent characters discovered in an older story leaking into a new story.
+  CHARACTER_DB = BUILTIN_CHARACTERS.map(c => ({ ...c, aliases: [...c.aliases] }));
 }
 
-function updateLanguage(language) {
-  const t = translations[language] || translations.en;
-  const fields = [
-    ["headline", "headline"],
-    ["intro", "intro"],
-    ["storyTitle", "storyTitle"],
-    ["storyHint", "storyHint"],
-    ["analyzeBtn", "analyze"]
-  ];
-
-  fields.forEach(([id, key]) => {
-    const element = $(id);
-    if (element) element.textContent = t[key];
-  });
-}
-
-if ($("language")) {
-  $("language").addEventListener("change", e => updateLanguage(e.target.value));
-}
-
-// Split the story into readable scene-sized units without splitting common titles.
-function splitStory(text) {
-  let clean = String(text || "").trim().replace(/\r/g, "");
-  if (!clean) return [];
-
-  const abbreviations = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "St.", "Jr.", "Sr."];
-  const placeholders = [];
-
-  abbreviations.forEach((abbr, i) => {
-    const token = `__ABBR_${i}__`;
-    const escaped = abbr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    clean = clean.replace(new RegExp(escaped, "g"), token);
-    placeholders.push([token, abbr]);
-  });
-
-  let chunks = clean
-    .split(/\n{2,}|(?<=[!?।])\s+(?=[A-Zঅ-হআ-ঔ০-৯])|(?<=\.)\s+(?=[A-Zঅ-হআ-ঔ০-৯])/)
-    .map(x => x.trim())
-    .filter(Boolean);
-
-  // Remove a short heading such as "The Brave Little Lion".
-  if (
-    chunks.length > 1 &&
-    chunks[0].length <= 90 &&
-    !/[.!?।]$/.test(chunks[0])
-  ) {
-    chunks.shift();
-  }
-
-  if (chunks.length < 2) {
-    const sentences = clean.match(/[^.!?।]+[.!?।]?/g) || [clean];
-    chunks = [];
-    for (let i = 0; i < sentences.length; i += 2) {
-      const part = sentences.slice(i, i + 2).join(" ").trim();
-      if (part) chunks.push(part);
-    }
-  }
-
-  chunks = chunks.map(chunk => {
-    for (const [token, abbr] of placeholders) {
-      chunk = chunk.replaceAll(token, abbr);
-    }
-    return chunk;
-  });
-
-  // Avoid one very long scene if the input has no sentence punctuation.
-  if (chunks.length === 1 && chunks[0].length > 380) {
-    const words = chunks[0].split(/\s+/);
-    chunks = [];
-    for (let i = 0; i < words.length; i += 65) {
-      chunks.push(words.slice(i, i + 65).join(" "));
-    }
-  }
-
-  return chunks.slice(0, 30);
-}
-
-function escapeRegex(text) {
-  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function containsPhrase(text, phrase) {
-  if (!phrase) return false;
-  const escaped = escapeRegex(phrase.trim());
-  const pattern = new RegExp(
-    "(^|[^\\p{L}\\p{N}])" + escaped + "(?=$|[^\\p{L}\\p{N}])",
-    "iu"
-  );
-  return pattern.test(text);
-}
-
-// Detect only explicitly introduced proper names. Do not add ordinary words.
 function discoverCustomCharacters(text) {
-  const pattern = /\b(?:named|called)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/g;
-  const reserved = new Set([
-    "The", "This", "That", "When", "After", "Before", "Without",
-    "Although", "Together", "Suddenly", "From", "Once", "One"
-  ]);
+  const source = String(text || "");
+  const candidates = new Map();
 
-  for (const match of text.matchAll(pattern)) {
-    const name = match[1].trim();
-    if (reserved.has(name.split(/\s+/)[0])) continue;
+  const addCandidate = (rawName, explicit = false) => {
+    const name = String(rawName || "").trim().replace(/\s+/g, " ");
+    if (!name) return;
 
-    const exists = CHARACTER_DB.some(
-      c => c.name.toLowerCase() === name.toLowerCase()
+    const words = name.split(" ");
+    const first = words[0].toLowerCase();
+    const normalized = name.toLowerCase();
+
+    // Exclude grammar words, sentence starters and non-name phrases.
+    if (NON_NAME_WORDS.has(first) || words.some(w => NON_NAME_WORDS.has(w.toLowerCase()))) return;
+    if (words.length > 4 || !/^[A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,3}$/.test(name)) return;
+
+    const existing = CHARACTER_DB.some(c =>
+      c.name.toLowerCase() === normalized ||
+      c.aliases.some(alias => alias.toLowerCase() === normalized)
     );
+    if (existing) return;
 
-    if (!exists) {
-      CHARACTER_DB.push({
-        name,
-        aliases: [name],
-        description: `A story character named ${name}. Keep the same face, age, hairstyle, clothing, colors, body shape and proportions in every scene.`
-      });
+    const previous = candidates.get(normalized) || { name, count: 0, explicit: false };
+    previous.count += 1;
+    previous.explicit = previous.explicit || explicit;
+    candidates.set(normalized, previous);
+  };
+
+  // Strong evidence: explicit character introductions.
+  const explicitPatterns = [
+    /\b(?:named|called)\s+([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,3})/g,
+    /\b(?:his|her|their)\s+name\s+(?:was|is)\s+([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,3})/g,
+    /\b(?:this|the)\s+(?:boy|girl|man|woman|king|queen|prince|princess|wizard|witch|dragon|lion|tiger|elephant|monkey|rabbit|fox|wolf|bear|bird|dog|cat|robot|alien)\s+is\s+([A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,2})/gi
+  ];
+  for (const pattern of explicitPatterns) {
+    for (const match of source.matchAll(pattern)) addCandidate(match[1], true);
+  }
+
+  // Also find recurring proper names anywhere in the story, not just after
+  // "named/called". Ignore the first capitalized word of each sentence.
+  const sentencePattern = /[^.!?\n]+[.!?]?/g;
+  for (const sentenceMatch of source.matchAll(sentencePattern)) {
+    const sentence = sentenceMatch[0].trim();
+    const wordPattern = /\b[A-Z][A-Za-z'-]*(?:\s+[A-Z][A-Za-z'-]*){0,2}\b/g;
+    const matches = [...sentence.matchAll(wordPattern)];
+    for (const match of matches) {
+      const candidate = match[0].trim();
+      // A capitalized first word is usually just sentence capitalization.
+      if (match.index === 0) continue;
+      addCandidate(candidate, false);
     }
+  }
+
+  for (const item of candidates.values()) {
+    // A single occurrence is accepted only when introduced explicitly.
+    if (!item.explicit && item.count < 2) continue;
+    CHARACTER_DB.push({
+      name: item.name,
+      aliases: [item.name],
+      description: `Consistent original story character: ${item.name}. Infer the character's species, age, role, clothing and visual traits from the story wherever stated. Keep the same face, body shape, colors, clothing, hairstyle, age and proportions in every scene. Do not redesign this character between scenes.`
+    });
   }
 }
 
 function detectCharacters(text) {
+  const source = String(text || "");
   const found = [];
+
   for (const character of CHARACTER_DB) {
-    if (character.aliases.some(alias => containsPhrase(text, alias))) {
-      found.push(character.name);
-    }
+    const matched = character.aliases.some(alias => {
+      const cleanAlias = String(alias || "").trim();
+      if (!cleanAlias) return false;
+      const parts = cleanAlias.split(/\s+/);
+      if (parts.some(part => NON_NAME_WORDS.has(part.toLowerCase()))) return false;
+      return containsPhrase(source, cleanAlias);
+    });
+    if (matched) found.push(character.name);
   }
+
   return [...new Set(found)];
 }
 
@@ -288,8 +264,10 @@ Keep the jungle, river, rocks, trees, water and lighting geographically coherent
 VISUAL DIRECTION:
 ${VISUAL_STYLE}
 
-IMPORTANT:
-Do not turn ordinary words, pronouns or conjunctions into characters. Do not change character faces, fur colors, clothing, age, hairstyle or proportions. Depict the exact action described in this scene.`;
+LANGUAGE AND CHARACTER DETECTION RULE:
+Understand the complete English text naturally. Every English word must be interpreted according to its grammatical meaning and the story context. A word is a CHARACTER only when it is clearly a proper name or an explicitly identified story entity. Do NOT turn ordinary English words into characters. This includes articles, pronouns, verbs, adjectives, adverbs, conjunctions, prepositions, transition words, sentence starters, time words, and abstract nouns. Examples that are NOT characters unless the story clearly establishes them as proper names: Without, Together, When, But, Carefully, That, From, Adventure, Suddenly, Finally, Beautiful, River, Forest, Morning and Happiness.
+
+Use only actual characters discovered from the story and listed in GLOBAL CHARACTER REFERENCE. Do not invent extra characters, split one character into multiple characters, or treat a species/role word as a separate character when it refers to an already identified character. Preserve each character's exact identity and visual design throughout the story. Infer visual details only from the story; do not contradict details the story gives. Depict the exact action described in this scene.`;
 }
 
 function analyze() {
@@ -300,6 +278,7 @@ function analyze() {
     return;
   }
 
+  resetCharacterDB();
   discoverCustomCharacters(story);
 
   const chunks = splitStory(story);
