@@ -1,5 +1,9 @@
 const $ = id => document.getElementById(id);
 let currentProject = null;
+const MANUAL_CAST_KEY = "myAiStudioManualCastV1";
+let manualCast = (() => { try { const x = JSON.parse(localStorage.getItem(MANUAL_CAST_KEY) || "[]"); return Array.isArray(x) ? x.filter(c => c && c.name) : []; } catch (_) { return []; } })();
+function saveManualCast() { try { localStorage.setItem(MANUAL_CAST_KEY, JSON.stringify(manualCast)); } catch (_) {} }
+
 
 // ------------------------------------------------------------
 // MY AI STUDIO — Storyboard + Character Consistency Engine
@@ -388,7 +392,10 @@ async function analyze() {
 
     // Manual character mode: never infer characters from story text.
     // Users add every character explicitly in the Character List below.
-    const allNames = [];
+    // Manual-only cast: no AI extraction and no automatic name discovery.
+    resetCharacterDB();
+    manualCast.forEach(c => CHARACTER_DB.push({ name: c.name, aliases: [c.name], description: c.description || `A story character named ${c.name}. Keep the same appearance in every scene.` }));
+    const allNames = manualCast.map(c => c.name);
     const sceneCast = chunks.map(() => []);
     const allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
 
@@ -396,7 +403,7 @@ async function analyze() {
       id: Date.now(),
       name: safeText("projectName").trim() || "Untitled Story",
       story,
-      characters: [],
+      characters: manualCast.map(c => ({ name: c.name, description: c.description || `A story character named ${c.name}. Keep the same appearance in every scene.` })),
       environments: allPlaces,
       scenes: chunks.map((scene, i) => ({
         title: `Scene ${i + 1}`,
@@ -481,26 +488,7 @@ function renderProject() {
   if ($("characterList")) {
     $("characterList").innerHTML = "";
 
-    const manualBox = document.createElement("div");
-    manualBox.className = "manual-character-controls";
-    const manualHint = document.createElement("p");
-    manualHint.textContent = "Automatic character detection is OFF. Add characters manually.";
-    const manualInput = document.createElement("input");
-    manualInput.id = "manualCharacterName";
-    manualInput.type = "text";
-    manualInput.placeholder = "Enter character name (e.g. Finn, Mama Fox, Mother)";
-    manualInput.setAttribute("aria-label", "Character name");
-    const addButton = document.createElement("button");
-    addButton.type = "button";
-    addButton.className = "secondary";
-    addButton.textContent = "+ Add Character";
-    addButton.addEventListener("click", addManualCharacter);
-    manualInput.addEventListener("keydown", event => {
-      if (event.key === "Enter") addManualCharacter();
-    });
-    manualBox.append(manualHint, manualInput, addButton);
-    $("characterList").appendChild(manualBox);
-
+    // Manual character entry is provided once in the panel above Generate.
     currentProject.characters.forEach((character, i) => {
       const el = document.createElement("div");
       el.className = "character";
@@ -521,6 +509,8 @@ function renderProject() {
       removeButton.textContent = "Remove";
       removeButton.addEventListener("click", () => {
         currentProject.characters.splice(i, 1);
+        manualCast = manualCast.filter(c => c.name.toLowerCase() !== character.name.toLowerCase());
+        saveManualCast();
         CHARACTER_DB = CHARACTER_DB.filter(c => c.name.toLowerCase() !== character.name.toLowerCase());
         refreshAllScenePrompts();
         renderProject();
@@ -531,20 +521,52 @@ function renderProject() {
   }
 }
 
+
+function renderManualCastPanel() {
+  const host = $("manualCastPanel"); if (!host) return;
+  host.innerHTML = "";
+  const title = document.createElement("h3"); title.textContent = "👤 Manual Character List";
+  const hint = document.createElement("p"); hint.textContent = "Automatic character detection is OFF. Type each character yourself; remove any name you do not want.";
+  const name = document.createElement("input"); name.id = "manualCharacterName"; name.placeholder = "Character name (e.g. Finn, Mama Fox, Daisy)";
+  const desc = document.createElement("textarea"); desc.id = "manualCharacterDescription"; desc.rows = 3; desc.placeholder = "Character appearance description (optional but recommended)";
+  const add = document.createElement("button"); add.type = "button"; add.textContent = "+ Add Character"; add.className = "secondary"; add.addEventListener("click", addManualCharacter);
+  name.addEventListener("keydown", e => { if (e.key === "Enter") addManualCharacter(); });
+  host.append(title, hint, name, desc, add);
+  const list = document.createElement("div"); list.style.marginTop = "10px";
+  if (!manualCast.length) { const empty = document.createElement("small"); empty.textContent = "No characters added yet."; list.appendChild(empty); }
+  manualCast.forEach((c, i) => {
+    const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px;border:1px solid #7775;border-radius:9px;margin-top:7px";
+    const label = document.createElement("span"); label.textContent = c.name + (c.description ? " — " + c.description : ""); label.style.cssText = "flex:1;min-width:0;overflow-wrap:anywhere";
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "secondary"; remove.textContent = "Remove";
+    remove.addEventListener("click", () => { const removed = manualCast[i]; manualCast.splice(i,1); saveManualCast(); if (currentProject) { currentProject.characters = currentProject.characters.filter(x => x.name.toLowerCase() !== removed.name.toLowerCase()); refreshAllScenePrompts(); renderProject(); renderManualCastPanel(); } else renderManualCastPanel(); });
+    row.append(label, remove); list.appendChild(row);
+  });
+  host.appendChild(list);
+}
+
 function addManualCharacter() {
-  if (!currentProject) return;
   const input = $("manualCharacterName");
+  const descriptionInput = $("manualCharacterDescription");
   const name = String(input && input.value || "").trim().replace(/\s+/g, " ");
+  const description = String(descriptionInput && descriptionInput.value || "").trim();
   if (!name) { alert("Enter a character name first."); return; }
-  if (currentProject.characters.some(c => c.name.toLowerCase() === name.toLowerCase())) {
-    alert("This character is already in the list.");
-    return;
+  if (manualCast.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+    alert("This character is already in the manual list."); return;
   }
-  const description = `A story character named ${name}. Keep the same identity, species, face, colors, clothing and proportions in every scene.`;
-  currentProject.characters.push({ name, description });
-  CHARACTER_DB.push({ name, aliases: [name], description });
-  refreshAllScenePrompts();
-  renderProject();
+  const character = { name, description: description || `A story character named ${name}. Keep the same face, species, colors, clothing, age and proportions in every scene.` };
+  manualCast.push(character);
+  saveManualCast();
+  if (!CHARACTER_DB.some(c => c.name.toLowerCase() === name.toLowerCase())) CHARACTER_DB.push({ name, aliases: [name], description: character.description });
+  if (currentProject) {
+    currentProject.characters.push({ ...character });
+    refreshAllScenePrompts();
+    renderProject();
+    renderManualCastPanel();
+  } else {
+    renderManualCastPanel();
+  }
+  if (input) input.value = "";
+  if (descriptionInput) descriptionInput.value = "";
 }
 
 function refreshAllScenePrompts() {
@@ -579,8 +601,9 @@ function syncEdits() {
 
   document.querySelectorAll("[data-character]").forEach(el => {
     const character = currentProject.characters[Number(el.dataset.character)];
-    if (character) character.description = el.value;
+    if (character) { character.description = el.value; const saved = manualCast.find(c => c.name.toLowerCase() === character.name.toLowerCase()); if (saved) saved.description = el.value; }
   });
+  saveManualCast();
 }
 
 function save() {
@@ -637,6 +660,9 @@ function renderRecent() {
 
     button.addEventListener("click", () => {
       currentProject = project;
+      currentProject.characters = Array.isArray(project.characters) ? project.characters : [];
+      currentProject.scenes = Array.isArray(project.scenes) ? project.scenes : [];
+      manualCast = currentProject.characters.map(c => ({ name: c.name, description: c.description || "" })); saveManualCast();
       if ($("story")) $("story").value = project.story || "";
       if ($("projectName")) $("projectName").value = project.name || "";
       renderProject();
@@ -661,7 +687,12 @@ function download(filename, content, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-if ($("analyzeBtn")) $("analyzeBtn").addEventListener("click", analyze);
+if ($("analyzeBtn")) {
+  const panel = document.createElement("section"); panel.id = "manualCastPanel"; panel.style.cssText = "padding:14px;border:1px solid #7777;border-radius:14px;margin:14px 0";
+  $("analyzeBtn").parentElement.insertBefore(panel, $("analyzeBtn"));
+  renderManualCastPanel();
+  $("analyzeBtn").addEventListener("click", analyze);
+}
 if ($("saveBtn")) $("saveBtn").addEventListener("click", save);
 
 if ($("exportBtn")) {
