@@ -1,75 +1,132 @@
 const $ = id => document.getElementById(id);
 let currentProject = null;
 
+// ------------------------------------------------------------
+// MY AI STUDIO — Storyboard + Character Consistency Engine
+// ------------------------------------------------------------
+
 const translations = {
-  en:{headline:"Turn your story into a storyboard.",intro:"Paste a story. My AI Studio will organize it into scenes, characters and visual prompts.",storyTitle:"1. Your story",storyHint:"Paste or write your story below.",analyze:"✦ Generate storyboard"},
-  bn:{headline:"তোমার গল্পকে Storyboard-এ রূপ দাও।",intro:"গল্প লিখো বা paste করো। My AI Studio সেটিকে scene, character ও visual prompt-এ সাজাবে।",storyTitle:"১. তোমার গল্প",storyHint:"নিচে গল্প লিখো বা paste করো।",analyze:"✦ Storyboard তৈরি করো"},
-  hi:{headline:"अपनी कहानी को स्टोरीबोर्ड में बदलें।",intro:"अपनी कहानी लिखें या paste करें। My AI Studio उसे scenes, characters और visual prompts में व्यवस्थित करेगा।",storyTitle:"१. आपकी कहानी",storyHint:"नीचे अपनी कहानी लिखें।",analyze:"✦ स्टोरीबोर्ड बनाएँ"},
-  ur:{headline:"اپنی کہانی کو اسٹوری بورڈ میں بدلیں۔",intro:"اپنی کہانی لکھیں یا پیسٹ کریں۔ My AI Studio اسے مناظر، کرداروں اور visual prompts میں ترتیب دے گا۔",storyTitle:"۱. آپ کی کہانی",storyHint:"نیچے اپنی کہانی لکھیں۔",analyze:"✦ اسٹوری بورڈ بنائیں"}
+  en: {
+    headline: "Turn your story into a storyboard.",
+    intro: "Paste a story. My AI Studio will organize it into scenes, characters and visual prompts.",
+    storyTitle: "1. Your story",
+    storyHint: "Paste or write your story below.",
+    analyze: "✦ Generate storyboard"
+  },
+  bn: {
+    headline: "তোমার গল্পকে Storyboard-এ রূপ দাও।",
+    intro: "গল্প লিখো বা paste করো। My AI Studio সেটিকে scene, character ও visual prompt-এ সাজাবে।",
+    storyTitle: "১. তোমার গল্প",
+    storyHint: "নিচে গল্প লিখো বা paste করো।",
+    analyze: "✦ Storyboard তৈরি করো"
+  },
+  hi: {
+    headline: "अपनी कहानी को स्टोरीबोर्ड में बदलें।",
+    intro: "अपनी कहानी लिखें या paste करें। My AI Studio उसे scenes, characters और visual prompts में व्यवस्थित करेगा।",
+    storyTitle: "१. आपकी कहानी",
+    storyHint: "नीचे अपनी कहानी लिखें।",
+    analyze: "✦ स्टोरीबोर्ड बनाएँ"
+  },
+  ur: {
+    headline: "اپنی کہانی کو اسٹوری بورڈ میں بدلیں۔",
+    intro: "اپنی کہانی لکھیں یا پیسٹ کریں۔ My AI Studio اسے مناظر، کرداروں اور visual prompts میں ترتیب دے گا۔",
+    storyTitle: "۱. آپ کی کہانی",
+    storyHint: "نیچے اپنی کہانی لکھیں۔",
+    analyze: "✦ اسٹوری بورڈ بنائیں"
+  }
 };
 
-// Character reference library.
-// The same full character descriptions are added to every scene prompt
-// so an image generator has a consistent reference across the storyboard.
-const CHARACTER_DB = [
+// Built-in characters. Add more story-specific characters here when needed.
+// Generic words such as "the", "she", "together", "after" are NEVER character names.
+const BUILTIN_CHARACTERS = [
   {
-    name:"Max",
-    aliases:["Max","little dog","the dog"],
-    description:"Max is a small, adorable golden-brown fluffy dog with soft medium-length fur, floppy ears, expressive dark-brown eyes, a small black nose and a compact puppy-like body. Keep exactly the same fur color and texture, face shape, ear shape, eye color, nose, body size and proportions in every scene. Do not redesign Max."
+    name: "Leo",
+    aliases: ["Leo", "little lion", "lion cub", "the lion cub"],
+    description: "A cute small lion cub with fluffy golden fur, big amber eyes, tiny rounded ears, a small black nose and a small fluffy tail. Keep exactly the same face, fur color, eye color, body size, ear shape and proportions in every scene."
   },
   {
-    name:"Leo",
-    aliases:["Leo"],
-    description:"Leo is an eight-year-old boy with short, slightly messy black hair, warm brown eyes and a friendly youthful face. He wears the same bright red shirt, blue shorts and simple brown shoes in every scene. Keep his age, face, hairstyle, skin tone, clothing colors and body proportions identical. Do not redesign Leo."
+    name: "Mama Lion",
+    aliases: ["Mama Lion", "mother lion", "lioness"],
+    description: "An adult golden lioness with smooth golden fur, kind amber eyes, a gentle expression and a graceful strong body. She has no mane. Keep exactly the same face, fur color, eye color, body size and proportions in every scene."
   },
   {
-    name:"Grandpa",
-    aliases:["Grandpa","Grandfather","old man"],
-    description:"Grandpa is a kind elderly man with neatly combed grey hair, a full soft grey beard and moustache, warm expressive eyes and a gentle face. He wears the same simple brown traditional shirt, dark trousers and brown shoes in every scene. Keep his age, face, beard, hairstyle, clothing and body proportions identical. Do not redesign Grandpa."
+    name: "Mia",
+    aliases: ["Mia", "little girl", "the girl"],
+    description: "A little girl with straight black hair, a pink dress and white shoes. Keep exactly the same face, hairstyle, hair length, dress design, clothing colors, age and body proportions in every scene."
   },
   {
-    name:"Arin", aliases:["Arin"],
-    description:"17-year-old orphan boy, messy dark hair, brown eyes, simple dark medieval clothes. Keep his face, hairstyle, age and outfit consistent. In later scenes he may carry a magical silver sword."
+    name: "Arin",
+    aliases: ["Arin"],
+    description: "A 17-year-old orphan boy with messy dark hair, brown eyes and simple dark medieval clothes. Keep his face, hairstyle, age and outfit consistent."
   },
   {
-    name:"Drakor", aliases:["Drakor","silver dragon","the dragon"],
-    description:"Enormous majestic silver dragon with glowing blue eyes, detailed silver scales and powerful wings. Keep the same head, horns, scale pattern, eye color and proportions in every scene."
+    name: "Drakor",
+    aliases: ["Drakor", "silver dragon", "the dragon"],
+    description: "An enormous majestic silver dragon with glowing blue eyes, detailed silver scales and powerful wings. Keep the same head, horns, scale pattern, eye color and proportions in every scene."
   },
   {
-    name:"Lyra", aliases:["Lyra"],
-    description:"Mysterious young girl wearing a dark blue cloak and carrying a glowing crystal staff. Keep her face, hair, cloak and staff design consistent."
+    name: "Lyra",
+    aliases: ["Lyra"],
+    description: "A mysterious young girl wearing a dark blue cloak and carrying a glowing crystal staff. Keep her face, hair, cloak and staff design consistent."
   },
   {
-    name:"Malgor", aliases:["Malgor"],
-    description:"Terrifying evil sorcerer with long white hair, black armor and glowing red eyes. Keep his face, hair, armor and eye color consistent."
+    name: "Malgor",
+    aliases: ["Malgor"],
+    description: "A terrifying evil sorcerer with long white hair, black armor and glowing red eyes. Keep his face, hair, armor and eye color consistent."
   },
   {
-    name:"Shadow Monsters", aliases:["shadow monsters","army of shadow monsters"],
-    description:"An army of dark smoky shadow creatures with glowing eyes. Keep their smoky bodies, silhouettes and glowing eyes visually consistent."
+    name: "Shadow Monsters",
+    aliases: ["shadow monsters", "army of shadow monsters"],
+    description: "An army of dark smoky shadow creatures with glowing eyes. Keep their smoky bodies, silhouettes and glowing eyes visually consistent."
   }
 ];
 
+const CHARACTER_DB = BUILTIN_CHARACTERS.map(c => ({ ...c, aliases: [...c.aliases] }));
+
 const ENVIRONMENT_DB = [
-  {name:"Ancient Kingdom", aliases:["kingdom","ancient kingdom","ancient kingdoms"]},
-  {name:"Small Village", aliases:["small village","village"]},
-  {name:"Riverside", aliases:["riverside","river bank","riverbank","by the river"]},
-  {name:"Forbidden Forest", aliases:["forbidden forest"]},
-  {name:"Ancient Cave", aliases:["ancient cave","cave"]},
-  {name:"Dark Castle", aliases:["dark castle","castle"]},
-  {name:"Mountains", aliases:["mountains","mountain"]}
+  { name: "Jungle", aliases: ["jungle", "forest"] },
+  { name: "River", aliases: ["river", "riverbank", "waterfall", "stream"] },
+  { name: "Small Village", aliases: ["small village", "village"] },
+  { name: "Ancient Kingdom", aliases: ["kingdom", "ancient kingdom", "ancient kingdoms"] },
+  { name: "Forbidden Forest", aliases: ["forbidden forest"] },
+  { name: "Ancient Cave", aliases: ["ancient cave", "cave"] },
+  { name: "Dark Castle", aliases: ["dark castle", "castle"] },
+  { name: "Mountains", aliases: ["mountains", "mountain"] }
 ];
 
-$("language").addEventListener("change", e => {
-  const t = translations[e.target.value] || translations.en;
-  $("headline").textContent=t.headline;
-  $("intro").textContent=t.intro;
-  $("storyTitle").textContent=t.storyTitle;
-  $("storyHint").textContent=t.storyHint;
-  $("analyzeBtn").textContent=t.analyze;
-});
+const VISUAL_STYLE =
+  "High-quality 3D animated family movie, cinematic composition, expressive emotions, detailed environment, beautiful natural lighting, consistent character design, professional animation-film quality, 16:9 widescreen, no text, no subtitles, no logo, no watermark.";
 
+function safeText(id) {
+  const element = $(id);
+  return element ? element.value : "";
+}
+
+function updateLanguage(language) {
+  const t = translations[language] || translations.en;
+  const fields = [
+    ["headline", "headline"],
+    ["intro", "intro"],
+    ["storyTitle", "storyTitle"],
+    ["storyHint", "storyHint"],
+    ["analyzeBtn", "analyze"]
+  ];
+
+  fields.forEach(([id, key]) => {
+    const element = $(id);
+    if (element) element.textContent = t[key];
+  });
+}
+
+if ($("language")) {
+  $("language").addEventListener("change", e => updateLanguage(e.target.value));
+}
+
+// Split the story into readable scene-sized units without splitting common titles.
 function splitStory(text) {
-  let clean = text.trim().replace(/\r/g, "");
+  let clean = String(text || "").trim().replace(/\r/g, "");
+  if (!clean) return [];
+
   const abbreviations = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "St.", "Jr.", "Sr."];
   const placeholders = [];
 
@@ -85,7 +142,12 @@ function splitStory(text) {
     .map(x => x.trim())
     .filter(Boolean);
 
-  if (chunks.length > 1 && chunks[0].length <= 90 && !/[.!?।]$/.test(chunks[0])) {
+  // Remove a short heading such as "The Brave Little Lion".
+  if (
+    chunks.length > 1 &&
+    chunks[0].length <= 90 &&
+    !/[.!?।]$/.test(chunks[0])
+  ) {
     chunks.shift();
   }
 
@@ -93,15 +155,19 @@ function splitStory(text) {
     const sentences = clean.match(/[^.!?।]+[.!?।]?/g) || [clean];
     chunks = [];
     for (let i = 0; i < sentences.length; i += 2) {
-      chunks.push(sentences.slice(i, i + 2).join(" ").trim());
+      const part = sentences.slice(i, i + 2).join(" ").trim();
+      if (part) chunks.push(part);
     }
   }
 
   chunks = chunks.map(chunk => {
-    for (const [token, abbr] of placeholders) chunk = chunk.replaceAll(token, abbr);
+    for (const [token, abbr] of placeholders) {
+      chunk = chunk.replaceAll(token, abbr);
+    }
     return chunk;
   });
 
+  // Avoid one very long scene if the input has no sentence punctuation.
   if (chunks.length === 1 && chunks[0].length > 380) {
     const words = chunks[0].split(/\s+/);
     chunks = [];
@@ -110,28 +176,44 @@ function splitStory(text) {
     }
   }
 
-  return chunks.slice(0, 20);
+  return chunks.slice(0, 30);
 }
 
 function escapeRegex(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function containsPhrase(text, phrase) {
-  const escaped = escapeRegex(phrase);
-  const pattern = new RegExp("(^|[^\\p{L}\\p{N}])" + escaped + "(?=$|[^\\p{L}\\p{N}])", "iu");
+  if (!phrase) return false;
+  const escaped = escapeRegex(phrase.trim());
+  const pattern = new RegExp(
+    "(^|[^\\p{L}\\p{N}])" + escaped + "(?=$|[^\\p{L}\\p{N}])",
+    "iu"
+  );
   return pattern.test(text);
 }
 
+// Detect only explicitly introduced proper names. Do not add ordinary words.
 function discoverCustomCharacters(text) {
   const pattern = /\b(?:named|called)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/g;
+  const reserved = new Set([
+    "The", "This", "That", "When", "After", "Before", "Without",
+    "Although", "Together", "Suddenly", "From", "Once", "One"
+  ]);
+
   for (const match of text.matchAll(pattern)) {
     const name = match[1].trim();
-    if (!CHARACTER_DB.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+    if (reserved.has(name.split(/\s+/)[0])) continue;
+
+    const exists = CHARACTER_DB.some(
+      c => c.name.toLowerCase() === name.toLowerCase()
+    );
+
+    if (!exists) {
       CHARACTER_DB.push({
         name,
-        aliases:[name],
-        description:`Story character ${name}. Keep the same face, age, hairstyle, clothing, colors and body proportions in every scene.`
+        aliases: [name],
+        description: `A story character named ${name}. Keep the same face, age, hairstyle, clothing, colors, body shape and proportions in every scene.`
       });
     }
   }
@@ -140,9 +222,11 @@ function discoverCustomCharacters(text) {
 function detectCharacters(text) {
   const found = [];
   for (const character of CHARACTER_DB) {
-    if (character.aliases.some(alias => containsPhrase(text, alias))) found.push(character.name);
+    if (character.aliases.some(alias => containsPhrase(text, alias))) {
+      found.push(character.name);
+    }
   }
-  return found;
+  return [...new Set(found)];
 }
 
 function detectEnvironments(text) {
@@ -152,196 +236,351 @@ function detectEnvironments(text) {
 }
 
 function characterDescription(name) {
-  return CHARACTER_DB.find(c => c.name === name)?.description ||
-    `Maintain the same visual design for ${name} in every scene.`;
+  const character = CHARACTER_DB.find(
+    c => c.name.toLowerCase() === String(name).toLowerCase()
+  );
+  return character
+    ? character.description
+    : `Story character ${name}. Keep exactly the same visual appearance in every scene.`;
 }
 
-// Every scene prompt receives the complete cast reference list.
-// The scene-specific instruction prevents characters from appearing
-// in scenes where they are not part of the action.
+function getSceneCast(scene, allNames) {
+  const detected = detectCharacters(scene);
+  // Resolve pronouns by using the scene's detected characters only.
+  // The full cast is described separately in every prompt for consistency.
+  return detected.filter(name => allNames.includes(name));
+}
+
 function makePrompt(scene, index, allNames, allPlaces) {
-  const sceneNames = detectCharacters(scene);
+  const sceneNames = getSceneCast(scene, allNames);
   const scenePlaces = detectEnvironments(scene);
+  const castNames = allNames.length ? allNames : [];
 
-  const characterBlock = allNames.length
-    ? allNames.map(name =>
-        `${name}: ${characterDescription(name)}`
-      ).join("\n")
-    : "No named characters detected. Follow the story description and keep any recurring character design consistent.";
+  const fullCharacterReference = castNames.length
+    ? castNames.map(name => `${name}: ${characterDescription(name)}`).join("\n")
+    : "No confirmed named characters. Follow only the characters explicitly described in this scene.";
 
-  const sceneCast = sceneNames.length
-    ? sceneNames.join(", ")
-    : "Only characters required by the scene description";
+  const sceneCharacterInstruction = sceneNames.length
+    ? `CHARACTERS TO SHOW IN THIS SCENE:\n${sceneNames.join(", ")}.\nShow only these characters if they are explicitly present in the scene.`
+    : "CHARACTERS TO SHOW IN THIS SCENE:\nUse the story context to show only the character or characters who are actually present. Do not add the entire cast automatically.";
 
-  const environmentBlock = scenePlaces.length
+  const environmentReference = scenePlaces.length
     ? scenePlaces.join(", ")
     : (allPlaces.length
-        ? `Use the story's established locations when appropriate: ${allPlaces.join(", ")}.`
-        : "Use the location described in this scene.");
+        ? `Story locations for visual continuity: ${allPlaces.join(", ")}. Choose the location that matches this scene's action.`
+        : "Use the location described in the scene and keep the story world visually coherent.");
 
-  return `MY AI STUDIO — CHARACTER CONSISTENCY ENGINE.
-Create a cinematic story illustration for Scene ${index + 1}, in a consistent visual style.
+  return `MY AI STUDIO — CONSISTENT STORYBOARD PROMPT
+SCENE ${index + 1}
 
 SCENE ACTION:
 ${scene}
 
-FULL CHARACTER REFERENCE — KEEP THESE DESIGNS IDENTICAL IN EVERY SCENE:
-${characterBlock}
+GLOBAL CHARACTER REFERENCE — KEEP THESE DESIGNS IDENTICAL THROUGHOUT THE WHOLE STORY:
+${fullCharacterReference}
 
-CHARACTERS VISIBLE IN THIS SCENE:
-${sceneCast}
-Show only the characters who belong in this scene. Do not add every character automatically.
+${sceneCharacterInstruction}
 
-ESTABLISHED STORY ENVIRONMENTS:
-${allPlaces.length ? allPlaces.join(", ") : "Follow the story locations."}
+ENVIRONMENT AND CONTINUITY:
+${environmentReference}
+Keep the jungle, river, rocks, trees, water and lighting geographically coherent when the scene returns to the same location. Preserve the same character scale and visual style between shots.
 
-THIS SCENE'S ENVIRONMENT:
-${environmentBlock}
+VISUAL DIRECTION:
+${VISUAL_STYLE}
 
-CONTINUITY RULES:
-- Preserve each recurring character's exact face, age, hairstyle, fur, eye color, outfit, colors and body proportions.
-- Do not redesign characters or change their clothes between scenes unless the story explicitly says so.
-- Keep the same overall art style, visual quality and cinematic world throughout the storyboard.
-- Use expressive emotions, clear storytelling, detailed backgrounds and cinematic lighting.
-- Landscape 16:9 composition. No captions, no written words, no logos and no watermark.`;
+IMPORTANT:
+Do not turn ordinary words, pronouns or conjunctions into characters. Do not change character faces, fur colors, clothing, age, hairstyle or proportions. Depict the exact action described in this scene.`;
 }
 
 function analyze() {
-  const story = $("story").value.trim();
+  const story = safeText("story").trim();
+
   if (!story) {
     alert("Please paste your story first.");
     return;
   }
 
   discoverCustomCharacters(story);
+
   const chunks = splitStory(story);
+  if (!chunks.length) {
+    alert("Please enter a readable story.");
+    return;
+  }
+
   const allNames = [...new Set(chunks.flatMap(scene => detectCharacters(scene)))];
   const allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
 
   currentProject = {
-    id:Date.now(),
-    name:$("projectName").value.trim() || "Untitled Story",
+    id: Date.now(),
+    name: safeText("projectName").trim() || "Untitled Story",
     story,
-    characters:allNames.map(name => ({name,description:characterDescription(name)})),
-    environments:allPlaces,
-    scenes:chunks.map((scene,i) => ({
-      title:`Scene ${i+1}`,
-      description:scene,
-      characters:detectCharacters(scene),
-      environments:detectEnvironments(scene),
-      prompt:makePrompt(scene,i,allNames,allPlaces)
+    characters: allNames.map(name => ({
+      name,
+      description: characterDescription(name)
     })),
-    created:new Date().toISOString()
+    environments: allPlaces,
+    scenes: chunks.map((scene, i) => ({
+      title: `Scene ${i + 1}`,
+      description: scene,
+      characters: detectCharacters(scene),
+      environments: detectEnvironments(scene),
+      prompt: makePrompt(scene, i, allNames, allPlaces)
+    })),
+    created: new Date().toISOString()
   };
 
   renderProject();
-  $("results").classList.remove("hidden");
-  $("characters").classList.remove("hidden");
-  $("results").scrollIntoView({behavior:"smooth"});
+  if ($("results")) {
+    $("results").classList.remove("hidden");
+    $("results").scrollIntoView({ behavior: "smooth" });
+  }
+  if ($("characters")) $("characters").classList.remove("hidden");
 }
 
 function renderProject() {
-  $("summary").innerHTML =
-    `<span class="chip">${currentProject.scenes.length} scenes</span>`+
-    `<span class="chip">${currentProject.characters.length} detected character(s)</span>`+
-    `<span class="chip">${escapeHtml(currentProject.name)}</span>`;
+  if (!currentProject) return;
 
-  $("sceneList").innerHTML="";
-  currentProject.scenes.forEach((s,i)=>{
-    const el=document.createElement("article");
-    el.className="scene";
-    el.innerHTML=
-      `<div class="scene-top"><h3>🎬 ${escapeHtml(s.title)}</h3><span class="chip">Shot ${i+1}</span></div>`+
-      `<label>Scene description</label><textarea data-scene="${i}" data-field="description">${escapeHtml(s.description)}</textarea>`+
-      `<label>Visual prompt</label><textarea data-scene="${i}" data-field="prompt">${escapeHtml(s.prompt)}</textarea>`+
-      `<small>Characters: ${escapeHtml(s.characters.join(", ") || "None detected")} · Environment: ${escapeHtml(s.environments.join(", ") || "Not detected")}</small>`;
-    $("sceneList").appendChild(el);
-  });
+  if ($("summary")) {
+    $("summary").innerHTML =
+      `<span class="chip">${currentProject.scenes.length} scenes</span>` +
+      `<span class="chip">${currentProject.characters.length} detected character(s)</span>` +
+      `<span class="chip">${escapeHtml(currentProject.name)}</span>`;
+  }
 
-  $("characterList").innerHTML="";
-  currentProject.characters.forEach((c,i)=>{
-    const el=document.createElement("div");
-    el.className="character";
-    el.innerHTML=`<strong>👤 ${escapeHtml(c.name)}</strong><label>Character reference description</label><input data-character="${i}" value="${escapeAttr(c.description)}">`;
-    $("characterList").appendChild(el);
-  });
+  if ($("sceneList")) {
+    $("sceneList").innerHTML = "";
+
+    currentProject.scenes.forEach((scene, i) => {
+      const el = document.createElement("article");
+      el.className = "scene";
+
+      const descriptionLabel = document.createElement("label");
+      descriptionLabel.textContent = "Scene description";
+
+      const description = document.createElement("textarea");
+      description.value = scene.description;
+      description.dataset.scene = String(i);
+      description.dataset.field = "description";
+
+      const promptLabel = document.createElement("label");
+      promptLabel.textContent = "Visual prompt";
+
+      const prompt = document.createElement("textarea");
+      prompt.value = scene.prompt;
+      prompt.dataset.scene = String(i);
+      prompt.dataset.field = "prompt";
+
+      const top = document.createElement("div");
+      top.className = "scene-top";
+
+      const heading = document.createElement("h3");
+      heading.textContent = `🎬 ${scene.title}`;
+
+      const shot = document.createElement("span");
+      shot.className = "chip";
+      shot.textContent = `Shot ${i + 1}`;
+
+      top.append(heading, shot);
+
+      const small = document.createElement("small");
+      small.textContent =
+        `Characters: ${scene.characters.join(", ") || "Context-based"} · ` +
+        `Environment: ${scene.environments.join(", ") || "Not detected"}`;
+
+      el.append(top, descriptionLabel, description, promptLabel, prompt, small);
+      $("sceneList").appendChild(el);
+    });
+  }
+
+  if ($("characterList")) {
+    $("characterList").innerHTML = "";
+
+    currentProject.characters.forEach((character, i) => {
+      const el = document.createElement("div");
+      el.className = "character";
+
+      const heading = document.createElement("strong");
+      heading.textContent = `👤 ${character.name}`;
+
+      const label = document.createElement("label");
+      label.textContent = "Character reference description";
+
+      const input = document.createElement("input");
+      input.value = character.description;
+      input.dataset.character = String(i);
+
+      el.append(heading, label, input);
+      $("characterList").appendChild(el);
+    });
+  }
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]));
 }
-function escapeAttr(s) { return escapeHtml(s); }
+
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
 
 function syncEdits() {
   if (!currentProject) return;
-  document.querySelectorAll("[data-scene]").forEach(el=>{
-    currentProject.scenes[+el.dataset.scene][el.dataset.field]=el.value;
+
+  document.querySelectorAll("[data-scene]").forEach(el => {
+    const scene = currentProject.scenes[Number(el.dataset.scene)];
+    if (scene) scene[el.dataset.field] = el.value;
   });
-  document.querySelectorAll("[data-character]").forEach(el=>{
-    currentProject.characters[+el.dataset.character].description=el.value;
+
+  document.querySelectorAll("[data-character]").forEach(el => {
+    const character = currentProject.characters[Number(el.dataset.character)];
+    if (character) character.description = el.value;
   });
 }
 
 function save() {
-  if (!currentProject) return;
+  if (!currentProject) {
+    alert("Generate a storyboard first.");
+    return;
+  }
+
   syncEdits();
-  const all=JSON.parse(localStorage.getItem("myAiStudioProjects")||"[]");
-  const idx=all.findIndex(p=>p.id===currentProject.id);
-  if(idx>=0) all[idx]=currentProject; else all.unshift(currentProject);
-  localStorage.setItem("myAiStudioProjects",JSON.stringify(all));
-  renderRecent();
-  alert("Project saved on this device.");
+
+  try {
+    const all = JSON.parse(localStorage.getItem("myAiStudioProjects") || "[]");
+    const index = all.findIndex(p => p.id === currentProject.id);
+    if (index >= 0) all[index] = currentProject;
+    else all.unshift(currentProject);
+
+    localStorage.setItem("myAiStudioProjects", JSON.stringify(all));
+    renderRecent();
+    alert("Project saved on this device.");
+  } catch (error) {
+    alert("Could not save the project. Your device storage may be full.");
+  }
 }
 
 function renderRecent() {
-  const all=JSON.parse(localStorage.getItem("myAiStudioProjects")||"[]");
-  $("recent").innerHTML=all.length
-    ? all.slice(0,5).map(p=>`<div class="recent-item"><span>${escapeHtml(p.name)} · ${p.scenes.length} scenes</span><button class="secondary" data-open="${p.id}">Open</button></div>`).join("")
-    : "No saved projects yet.";
+  if (!$("recent")) return;
 
-  document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{
-    const p=all.find(x=>x.id===+b.dataset.open);
-    if(p){
-      currentProject=p;
-      $("story").value=p.story;
-      $("projectName").value=p.name;
-      renderProject();
-      $("results").classList.remove("hidden");
-      $("characters").classList.remove("hidden");
-    }
-  }));
-}
-
-function download(filename,content,type) {
-  const blob=new Blob([content],{type});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;
-  a.download=filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-$("analyzeBtn").addEventListener("click",analyze);
-$("saveBtn").addEventListener("click",save);
-$("exportBtn").addEventListener("click",()=>{
-  if(!currentProject)return;
-  syncEdits();
-  download("my-ai-studio-project.json",JSON.stringify(currentProject,null,2),"application/json");
-});
-$("copyBtn").addEventListener("click",async()=>{
-  if(!currentProject)return;
-  syncEdits();
-  const text=currentProject.scenes.map(s=>s.title+"\n"+s.prompt).join("\n\n");
+  let all = [];
   try {
-    await navigator.clipboard.writeText(text);
-    alert("All prompts copied.");
-  } catch(e) {
-    alert("Clipboard not available. Export the project JSON instead.");
+    all = JSON.parse(localStorage.getItem("myAiStudioProjects") || "[]");
+  } catch (error) {
+    all = [];
   }
-});
+
+  $("recent").innerHTML = "";
+
+  if (!all.length) {
+    $("recent").textContent = "No saved projects yet.";
+    return;
+  }
+
+  all.slice(0, 5).forEach(project => {
+    const item = document.createElement("div");
+    item.className = "recent-item";
+
+    const label = document.createElement("span");
+    label.textContent = `${project.name} · ${project.scenes.length} scenes`;
+
+    const button = document.createElement("button");
+    button.className = "secondary";
+    button.type = "button";
+    button.textContent = "Open";
+    button.dataset.open = String(project.id);
+
+    button.addEventListener("click", () => {
+      currentProject = project;
+      if ($("story")) $("story").value = project.story || "";
+      if ($("projectName")) $("projectName").value = project.name || "";
+      renderProject();
+      if ($("results")) $("results").classList.remove("hidden");
+      if ($("characters")) $("characters").classList.remove("hidden");
+    });
+
+    item.append(label, button);
+    $("recent").appendChild(item);
+  });
+}
+
+function download(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+if ($("analyzeBtn")) $("analyzeBtn").addEventListener("click", analyze);
+if ($("saveBtn")) $("saveBtn").addEventListener("click", save);
+
+if ($("exportBtn")) {
+  $("exportBtn").addEventListener("click", () => {
+    if (!currentProject) {
+      alert("Generate a storyboard first.");
+      return;
+    }
+    syncEdits();
+    download(
+      "my-ai-studio-project.json",
+      JSON.stringify(currentProject, null, 2),
+      "application/json"
+    );
+  });
+}
+
+if ($("copyBtn")) {
+  $("copyBtn").addEventListener("click", async () => {
+    if (!currentProject) {
+      alert("Generate a storyboard first.");
+      return;
+    }
+
+    syncEdits();
+    const prompts = currentProject.scenes
+      .map(scene => `${scene.title}\n${scene.prompt}`)
+      .join("\n\n");
+
+    try {
+      await navigator.clipboard.writeText(prompts);
+      alert("All prompts copied.");
+    } catch (error) {
+      // Fallback for browsers where Clipboard API is unavailable.
+      const textarea = document.createElement("textarea");
+      textarea.value = prompts;
+      document.body.appendChild(textarea);
+      textarea.select();
+
+      let copied = false;
+      try {
+        copied = document.execCommand("copy");
+      } catch (copyError) {
+        copied = false;
+      }
+
+      textarea.remove();
+      alert(copied
+        ? "All prompts copied."
+        : "Clipboard not available. Export the project JSON instead.");
+    }
+  });
+}
 
 renderRecent();
-if("serviceWorker" in navigator) {
-  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
 }
