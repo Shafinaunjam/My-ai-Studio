@@ -8,145 +8,127 @@ const translations = {
   ur:{headline:"اپنی کہانی کو اسٹوری بورڈ میں بدلیں۔",intro:"اپنی کہانی لکھیں یا پیسٹ کریں۔ My AI Studio اسے مناظر، کرداروں اور visual prompts میں ترتیب دے گا۔",storyTitle:"۱. آپ کی کہانی",storyHint:"نیچے اپنی کہانی لکھیں۔",analyze:"✦ اسٹوری بورڈ بنائیں"}
 };
 
-// Known character names and aliases. Multi-word names are checked as one character.
+// Character names are detected ONLY from this database or explicit
+// "named/called" introductions. Ordinary capitalized words are ignored.
 const CHARACTER_DB = [
-  {
-    name: "Zayn",
-    aliases: ["Zayn", "জেইন", "জাইন"],
-    description: "17-year-old orphan boy with messy black hair and brown eyes, wearing simple dark medieval clothes; keep the same face, hairstyle, age and outfit design in every scene."
-  },
-  {
-    name: "Phoenix",
-    aliases: ["Phoenix", "the Phoenix", "ফিনিক্স"],
-    description: "Gigantic magical golden bird with luminous golden feathers, burning wings and bright amber eyes; keep the same bird design, feather pattern and proportions in every scene."
-  },
-  {
-    name: "Dark King",
-    aliases: ["Dark King", "the Dark King"],
-    description: "Tall sinister ruler wearing dark armor and a black crown, with glowing purple eyes; keep the same armor, crown, face and proportions in every scene."
-  },
-  {
-    name: "Dark Creatures",
-    aliases: ["dark creatures", "Dark Creatures"],
-    description: "A group of frightening shadow creatures with smoky dark bodies and glowing eyes; maintain a consistent monster design."
-  }
+  {name:"Arin", aliases:["Arin"], description:"17-year-old orphan boy, messy dark hair, brown eyes, simple dark medieval clothes. Keep his face, hairstyle, age and outfit consistent. In later scenes he may carry a magical silver sword."},
+  {name:"Drakor", aliases:["Drakor","silver dragon","the dragon"], description:"Enormous majestic silver dragon with glowing blue eyes, detailed silver scales and powerful wings. Keep the same head, horns, scale pattern, eye color and proportions in every scene."},
+  {name:"Lyra", aliases:["Lyra"], description:"Mysterious young girl wearing a dark blue cloak and carrying a glowing crystal staff. Keep her face, hair, cloak and staff design consistent."},
+  {name:"Malgor", aliases:["Malgor"], description:"Terrifying evil sorcerer with long white hair, black armor and glowing red eyes. Keep his face, hair, armor and eye color consistent."},
+  {name:"Shadow Monsters", aliases:["shadow monsters","army of shadow monsters"], description:"An army of dark smoky shadow creatures with glowing eyes. Keep their smoky bodies, silhouettes and glowing eyes visually consistent."}
 ];
 
-const NON_CHARACTER_WORDS = new Set([
-  "Unlike","Everyone","One","Forbidden","Forest","Suddenly","The","For","But",
-  "And","A","An","In","On","At","It","Its","He","She","They","His","Her",
-  "When","While","After","Before","Then","There","Their","This","That",
-  "From","Into","Through","Beyond","Other","First","Last","Now","Night",
-  "Kingdom","Village","Mountain","Mountains","Castle","Sky","Heavens",
-  "Ancient","Mysterious","Powerful","Greatest","Guardian","Warriors"
-]);
-
-const ENVIRONMENT_TERMS = [
-  "Forbidden Forest",
-  "Ancient Kingdom",
-  "Small Village",
-  "Dark King's Castle"
+const ENVIRONMENT_DB = [
+  {name:"Ancient Kingdom", aliases:["kingdom","ancient kingdom","ancient kingdoms"]},
+  {name:"Small Village", aliases:["small village","village"]},
+  {name:"Forbidden Forest", aliases:["Forbidden Forest"]},
+  {name:"Ancient Cave", aliases:["ancient cave","cave"]},
+  {name:"Dark Castle", aliases:["dark castle","castle"]},
+  {name:"Mountains", aliases:["mountains","mountain"]}
 ];
 
 $("language").addEventListener("change", e => {
   const t = translations[e.target.value] || translations.en;
-  $("headline").textContent = t.headline;
-  $("intro").textContent = t.intro;
-  $("storyTitle").textContent = t.storyTitle;
-  $("storyHint").textContent = t.storyHint;
-  $("analyzeBtn").textContent = t.analyze;
+  $("headline").textContent=t.headline;
+  $("intro").textContent=t.intro;
+  $("storyTitle").textContent=t.storyTitle;
+  $("storyHint").textContent=t.storyHint;
+  $("analyzeBtn").textContent=t.analyze;
 });
 
 function splitStory(text) {
-  const clean = text.trim().replace(/\r/g, "");
-  let chunks = clean
-    .split(/\n{2,}|(?<=[.!?।])\s+(?=[A-Zঅ-হআ-ঔ০-৯])/)
-    .map(x => x.trim())
-    .filter(Boolean);
+  let clean = text.trim().replace(/\r/g, "");
+  // Treat a short first line as a story title, not a storyboard scene.
+  const lines = clean.split("\n");
+  if (lines.length > 1 && lines[0].trim().length < 90 && !/[.!?।]$/.test(lines[0].trim())) {
+    clean = lines.slice(1).join("\n").trim();
+  }
+
+  let chunks = clean.split(/\n{2,}|(?<=[.!?।])\s+(?=[A-Zঅ-হআ-ঔ০-৯])/)
+    .map(x => x.trim()).filter(Boolean);
 
   if (chunks.length < 2) {
     const sentences = clean.match(/[^.!?।]+[.!?।]?/g) || [clean];
     chunks = [];
-    for (let i = 0; i < sentences.length; i += 2) {
-      chunks.push(sentences.slice(i, i + 2).join(" ").trim());
+    for (let i=0; i<sentences.length; i+=2) {
+      chunks.push(sentences.slice(i,i+2).join(" ").trim());
     }
   }
 
   if (chunks.length === 1 && chunks[0].length > 380) {
     const words = chunks[0].split(/\s+/);
     chunks = [];
-    for (let i = 0; i < words.length; i += 65) {
-      chunks.push(words.slice(i, i + 65).join(" "));
-    }
+    for (let i=0; i<words.length; i+=65) chunks.push(words.slice(i,i+65).join(" "));
   }
-  return chunks.slice(0, 20);
+  return chunks.slice(0,20);
 }
 
 function escapeRegex(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function containsAlias(text, alias) {
-  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegex(alias)}(?=$|[^\\p{L}\\p{N}])`, "iu");
+function containsPhrase(text, phrase) {
+  const escaped = escapeRegex(phrase);
+  const pattern = new RegExp("(^|[^\\p{L}\\p{N}])" + escaped + "(?=$|[^\\p{L}\\p{N}])", "iu");
   return pattern.test(text);
 }
 
-function detectNames(text) {
-  const found = [];
+function discoverCustomCharacters(text) {
+  const pattern = /\b(?:named|called)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/g;
+  for (const match of text.matchAll(pattern)) {
+    const name = match[1].trim();
+    if (!CHARACTER_DB.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+      CHARACTER_DB.push({
+        name,
+        aliases:[name],
+        description:`Story character ${name}. Keep the same face, age, hairstyle, clothing, colors and body proportions in every scene.`
+      });
+    }
+  }
+}
 
-  // First detect known characters, including multi-word names.
+function detectCharacters(text) {
+  const found = [];
   for (const character of CHARACTER_DB) {
-    if (character.aliases.some(alias => containsAlias(text, alias))) {
+    if (character.aliases.some(alias => containsPhrase(text, alias))) {
       found.push(character.name);
     }
   }
-
-  // Keep support for the names used by the original MVP, without treating
-  // ordinary capitalized sentence words as people.
-  const legacyNames = [
-    "Ayan","আয়ান","আয়ান","রহিম","করিম","রাফি","সারা",
-    "Maya","Arif","Rahim","Karim","Sara","Mira","Rohan","Zara"
-  ];
-  for (const name of legacyNames) {
-    if (!found.includes(name) && containsAlias(text, name)) found.push(name);
-  }
-
-  // Conservative fallback for additional English proper names:
-  // ignore sentence starters and common nouns/adjectives.
-  const tokens = text.match(/\b[A-Z][a-z]{2,}\b/g) || [];
-  for (const token of tokens) {
-    if (NON_CHARACTER_WORDS.has(token)) continue;
-    if (ENVIRONMENT_TERMS.some(term => term.toLowerCase().includes(token.toLowerCase()))) continue;
-    if (found.some(name => name.toLowerCase() === token.toLowerCase())) continue;
-    // Only accept likely names when they occur more than once in the story.
-    const occurrences = text.match(new RegExp(`\\b${escapeRegex(token)}\\b`, "g")) || [];
-    if (occurrences.length >= 2) found.push(token);
-  }
-
-  return [...new Set(found)].slice(0, 12);
+  return found;
 }
 
-function getCharacterDescription(name) {
-  const known = CHARACTER_DB.find(c => c.name === name);
-  if (known) return known.description;
-  return `Keep ${name}'s face, age, hairstyle, clothing, body proportions and distinguishing features identical in every scene where this character appears.`;
+function detectEnvironments(text) {
+  return ENVIRONMENT_DB
+    .filter(place => place.aliases.some(alias => containsPhrase(text, alias)))
+    .map(place => place.name);
 }
 
-function charactersInScene(scene, allNames) {
-  return allNames.filter(name => {
-    const known = CHARACTER_DB.find(c => c.name === name);
-    const aliases = known ? known.aliases : [name];
-    return aliases.some(alias => containsAlias(scene, alias));
-  });
+function characterDescription(name) {
+  return CHARACTER_DB.find(c => c.name === name)?.description ||
+    `Maintain the same visual design for ${name} in every scene.`;
 }
 
-function makePrompt(scene, index, allNames) {
-  const sceneNames = charactersInScene(scene, allNames);
-  const characterReference = sceneNames.length
-    ? sceneNames.map(name => `${name}: ${getCharacterDescription(name)}`).join("\n")
-    : "No recurring named character detected in this scene; do not invent a new character reference.";
+function makePrompt(scene, index) {
+  const names = detectCharacters(scene);
+  const places = detectEnvironments(scene);
 
-  return `Cinematic story illustration, scene ${index + 1}. ${scene}\nCharacter consistency references:\n${characterReference}\nDetailed environment, expressive emotion, dramatic cinematic lighting, coherent composition, high visual quality.`;
+  const characterBlock = names.length
+    ? names.map(name => `${name}: ${characterDescription(name)}`).join("\n")
+    : "No named character is explicitly identified in this scene. Do not invent character names.";
+
+  const environmentBlock = places.length
+    ? places.join(", ")
+    : "Environment should follow the location described in the scene.";
+
+  return `Cinematic story illustration, scene ${index+1}. ${scene}
+
+CHARACTER CONSISTENCY:
+${characterBlock}
+
+ENVIRONMENT:
+${environmentBlock}
+
+Detailed environment, expressive emotion, dramatic cinematic lighting, coherent composition, high visual quality.`;
 }
 
 function analyze() {
@@ -156,150 +138,134 @@ function analyze() {
     return;
   }
 
+  discoverCustomCharacters(story);
   const chunks = splitStory(story);
-  const names = detectNames(story);
+  const allNames = [...new Set(chunks.flatMap(scene => detectCharacters(scene)))];
 
   currentProject = {
-    id: Date.now(),
-    name: $("projectName").value.trim() || "Untitled Story",
+    id:Date.now(),
+    name:$("projectName").value.trim() || "Untitled Story",
     story,
-    characters: names.map(name => ({
-      name,
-      description: getCharacterDescription(name)
+    characters:allNames.map(name => ({name,description:characterDescription(name)})),
+    environments:[...new Set(chunks.flatMap(scene => detectEnvironments(scene)))],
+    scenes:chunks.map((scene,i) => ({
+      title:`Scene ${i+1}`,
+      description:scene,
+      characters:detectCharacters(scene),
+      environments:detectEnvironments(scene),
+      prompt:makePrompt(scene,i)
     })),
-    scenes: chunks.map((scene, i) => ({
-      title: `Scene ${i + 1}`,
-      description: scene,
-      prompt: makePrompt(scene, i, names)
-    })),
-    created: new Date().toISOString()
+    created:new Date().toISOString()
   };
 
   renderProject();
   $("results").classList.remove("hidden");
   $("characters").classList.remove("hidden");
-  $("results").scrollIntoView({behavior: "smooth"});
+  $("results").scrollIntoView({behavior:"smooth"});
 }
 
 function renderProject() {
   $("summary").innerHTML =
-    `<span class="chip">${currentProject.scenes.length} scenes</span>` +
-    `<span class="chip">${currentProject.characters.length} detected character(s)</span>` +
+    `<span class="chip">${currentProject.scenes.length} scenes</span>`+
+    `<span class="chip">${currentProject.characters.length} detected character(s)</span>`+
     `<span class="chip">${escapeHtml(currentProject.name)}</span>`;
 
-  $("sceneList").innerHTML = "";
-  currentProject.scenes.forEach((scene, i) => {
-    const el = document.createElement("article");
-    el.className = "scene";
-    el.innerHTML =
-      `<div class="scene-top"><h3>🎬 ${escapeHtml(scene.title)}</h3><span class="chip">Shot ${i + 1}</span></div>` +
-      `<label>Scene description</label><textarea data-scene="${i}" data-field="description">${escapeHtml(scene.description)}</textarea>` +
-      `<label>Visual prompt</label><textarea data-scene="${i}" data-field="prompt">${escapeHtml(scene.prompt)}</textarea>`;
+  $("sceneList").innerHTML="";
+  currentProject.scenes.forEach((s,i)=>{
+    const el=document.createElement("article");
+    el.className="scene";
+    el.innerHTML=
+      `<div class="scene-top"><h3>🎬 ${escapeHtml(s.title)}</h3><span class="chip">Shot ${i+1}</span></div>`+
+      `<label>Scene description</label><textarea data-scene="${i}" data-field="description">${escapeHtml(s.description)}</textarea>`+
+      `<label>Visual prompt</label><textarea data-scene="${i}" data-field="prompt">${escapeHtml(s.prompt)}</textarea>`+
+      `<small>Characters: ${escapeHtml(s.characters.join(", ") || "None detected")} · Environment: ${escapeHtml(s.environments.join(", ") || "Not detected")}</small>`;
     $("sceneList").appendChild(el);
   });
 
-  $("characterList").innerHTML = "";
-  currentProject.characters.forEach((character, i) => {
-    const el = document.createElement("div");
-    el.className = "character";
-    el.innerHTML =
-      `<strong>👤 ${escapeHtml(character.name)}</strong>` +
-      `<label>Character reference description</label>` +
-      `<input data-character="${i}" value="${escapeAttr(character.description)}">`;
+  $("characterList").innerHTML="";
+  currentProject.characters.forEach((c,i)=>{
+    const el=document.createElement("div");
+    el.className="character";
+    el.innerHTML=`<strong>👤 ${escapeHtml(c.name)}</strong><label>Character reference description</label><input data-character="${i}" value="${escapeAttr(c.description)}">`;
     $("characterList").appendChild(el);
   });
 }
 
 function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-  }[c]));
+  return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
-
-function escapeAttr(s) {
-  return escapeHtml(s);
-}
+function escapeAttr(s) { return escapeHtml(s); }
 
 function syncEdits() {
   if (!currentProject) return;
-  document.querySelectorAll("[data-scene]").forEach(el => {
-    currentProject.scenes[+el.dataset.scene][el.dataset.field] = el.value;
+  document.querySelectorAll("[data-scene]").forEach(el=>{
+    currentProject.scenes[+el.dataset.scene][el.dataset.field]=el.value;
   });
-  document.querySelectorAll("[data-character]").forEach(el => {
-    currentProject.characters[+el.dataset.character].description = el.value;
+  document.querySelectorAll("[data-character]").forEach(el=>{
+    currentProject.characters[+el.dataset.character].description=el.value;
   });
 }
 
 function save() {
   if (!currentProject) return;
   syncEdits();
-  const all = JSON.parse(localStorage.getItem("myAiStudioProjects") || "[]");
-  const idx = all.findIndex(p => p.id === currentProject.id);
-  if (idx >= 0) all[idx] = currentProject;
-  else all.unshift(currentProject);
-  localStorage.setItem("myAiStudioProjects", JSON.stringify(all));
+  const all=JSON.parse(localStorage.getItem("myAiStudioProjects")||"[]");
+  const idx=all.findIndex(p=>p.id===currentProject.id);
+  if(idx>=0) all[idx]=currentProject; else all.unshift(currentProject);
+  localStorage.setItem("myAiStudioProjects",JSON.stringify(all));
   renderRecent();
   alert("Project saved on this device.");
 }
 
 function renderRecent() {
-  const all = JSON.parse(localStorage.getItem("myAiStudioProjects") || "[]");
-  $("recent").innerHTML = all.length
-    ? all.slice(0, 5).map(p =>
-        `<div class="recent-item"><span>${escapeHtml(p.name)} · ${p.scenes.length} scenes</span><button class="secondary" data-open="${p.id}">Open</button></div>`
-      ).join("")
+  const all=JSON.parse(localStorage.getItem("myAiStudioProjects")||"[]");
+  $("recent").innerHTML=all.length
+    ? all.slice(0,5).map(p=>`<div class="recent-item"><span>${escapeHtml(p.name)} · ${p.scenes.length} scenes</span><button class="secondary" data-open="${p.id}">Open</button></div>`).join("")
     : "No saved projects yet.";
 
-  document.querySelectorAll("[data-open]").forEach(button => {
-    button.addEventListener("click", () => {
-      const project = all.find(p => p.id === +button.dataset.open);
-      if (project) {
-        currentProject = project;
-        $("story").value = project.story;
-        $("projectName").value = project.name;
-        renderProject();
-        $("results").classList.remove("hidden");
-        $("characters").classList.remove("hidden");
-      }
-    });
-  });
+  document.querySelectorAll("[data-open]").forEach(b=>b.addEventListener("click",()=>{
+    const p=all.find(x=>x.id===+b.dataset.open);
+    if(p){
+      currentProject=p;
+      $("story").value=p.story;
+      $("projectName").value=p.name;
+      renderProject();
+      $("results").classList.remove("hidden");
+      $("characters").classList.remove("hidden");
+    }
+  }));
 }
 
-function download(filename, content, type) {
-  const blob = new Blob([content], {type});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
+function download(filename,content,type) {
+  const blob=new Blob([content],{type});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
-$("analyzeBtn").addEventListener("click", analyze);
-$("saveBtn").addEventListener("click", save);
-
-$("exportBtn").addEventListener("click", () => {
-  if (!currentProject) return;
+$("analyzeBtn").addEventListener("click",analyze);
+$("saveBtn").addEventListener("click",save);
+$("exportBtn").addEventListener("click",()=>{
+  if(!currentProject)return;
   syncEdits();
-  download("my-ai-studio-project.json", JSON.stringify(currentProject, null, 2), "application/json");
+  download("my-ai-studio-project.json",JSON.stringify(currentProject,null,2),"application/json");
 });
-
-$("copyBtn").addEventListener("click", async () => {
-  if (!currentProject) return;
+$("copyBtn").addEventListener("click",async()=>{
+  if(!currentProject)return;
   syncEdits();
-  const prompts = currentProject.scenes.map(scene => scene.title + "\n" + scene.prompt).join("\n\n");
+  const text=currentProject.scenes.map(s=>s.title+"\n"+s.prompt).join("\n\n");
   try {
-    await navigator.clipboard.writeText(prompts);
+    await navigator.clipboard.writeText(text);
     alert("All prompts copied.");
-  } catch (e) {
+  } catch(e) {
     alert("Clipboard not available. Export the project JSON instead.");
   }
 });
 
 renderRecent();
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  });
+if("serviceWorker" in navigator) {
+  window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
 }
