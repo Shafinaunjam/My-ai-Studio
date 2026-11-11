@@ -1,0 +1,10 @@
+{
+  "name": "My AI Studio",
+  "short_name": "My AI Studio",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#101522",
+  "description": "Story to Video storyboard MVP",
+  "icons": []
+}

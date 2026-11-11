@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <meta name="description" content="My AI Studio - Story to Video MVP">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+  <title>My AI Studio</title>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><div class="logo">✦</div><div><strong>My AI Studio</strong><small>Story to Video • MVP</small></div></div>
+  <select id="language" aria-label="Interface language">
+    <option value="en">English</option><option value="bn">বাংলা</option>
+    <option value="hi">हिन्दी</option><option value="ur">اردو</option>
+  </select>
+</header>
+<main>
+  <section class="hero">
+    <span class="eyebrow">YOUR CREATIVE WORKSPACE</span>
+    <h1 id="headline">Turn your story into a storyboard.</h1>
+    <p id="intro">Paste a story. My AI Studio will organize it into scenes, characters and visual prompts.</p>
+  </section>
+
+  <section class="panel">
+    <div class="section-head"><div><h2 id="storyTitle">1. Your story</h2><p id="storyHint">Paste or write your story below.</p></div><span class="step">01</span></div>
+    <textarea id="story" rows="8" placeholder="Once upon a time..."></textarea>
+    <div class="controls">
+      <input id="projectName" type="text" placeholder="Project name (e.g. Dragon Kingdom)">
+      <button class="primary" id="analyzeBtn">✦ Generate storyboard</button>
+    </div>
+    <p class="note" id="localNote">MVP note: this first version runs in your browser. Story breakdown is local and does not call a paid AI API.</p>
+  </section>
+
+  <section class="panel hidden" id="results">
+    <div class="section-head"><div><h2 id="boardTitle">2. Storyboard</h2><p id="boardSub">Review and edit your scenes.</p></div><span class="step">02</span></div>
+    <div class="summary" id="summary"></div>
+    <div id="sceneList" class="scene-list"></div>
+    <div class="action-row">
+      <button class="secondary" id="saveBtn">Save project</button>
+      <button class="secondary" id="exportBtn">Export project JSON</button>
+      <button class="primary" id="copyBtn">Copy all prompts</button>
+    </div>
+  </section>
+
+  <section class="panel hidden" id="characters">
+    <div class="section-head"><div><h2>3. Character library</h2><p>Characters detected in your story. Edit descriptions before using them as visual references.</p></div><span class="step">03</span></div>
+    <div id="characterList" class="character-list"></div>
+  </section>
+
+  <section class="panel">
+    <div class="section-head"><div><h2>Recent project</h2><p>Projects saved on this device.</p></div></div>
+    <div id="recent" class="recent empty">No saved projects yet.</div>
+  </section>
+</main>
+<footer>My AI Studio · Zero-budget Storyboard MVP · Your projects stay in this browser</footer>
+<script src="app.js"></script>
+</body>
+</html>
