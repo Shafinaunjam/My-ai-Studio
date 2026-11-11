@@ -38,29 +38,52 @@ $("language").addEventListener("change", e => {
 
 function splitStory(text) {
   let clean = text.trim().replace(/\r/g, "");
-  // Treat a short first line as a story title, not a storyboard scene.
-  const lines = clean.split("\n");
-  if (lines.length > 1 && lines[0].trim().length < 90 && !/[.!?।]$/.test(lines[0].trim())) {
-    clean = lines.slice(1).join("\n").trim();
-  }
 
-  let chunks = clean.split(/\n{2,}|(?<=[.!?।])\s+(?=[A-Zঅ-হআ-ঔ০-৯])/)
-    .map(x => x.trim()).filter(Boolean);
+  // Protect common titles/abbreviations so "Mr. Anderson" stays together.
+  const abbreviations = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "St.", "Jr.", "Sr."];
+  const placeholders = [];
+  abbreviations.forEach((abbr, i) => {
+    const token = `__ABBR_${i}__`;
+    const escaped = abbr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    clean = clean.replace(new RegExp(escaped, "g"), token);
+    placeholders.push([token, abbr]);
+  });
+
+  let chunks = clean
+    .split(/\n{2,}|(?<=[!?।])\s+(?=[A-Zঅ-হআ-ঔ০-৯])|(?<=\.)\s+(?=[A-Zঅ-হআ-ঔ০-৯])/)
+    .map(x => x.trim())
+    .filter(Boolean);
+
+  // Remove a standalone short title from the scene list.
+  if (chunks.length > 1 && chunks[0].length <= 90 && !/[.!?।]$/.test(chunks[0])) {
+    chunks.shift();
+  }
 
   if (chunks.length < 2) {
     const sentences = clean.match(/[^.!?।]+[.!?।]?/g) || [clean];
     chunks = [];
-    for (let i=0; i<sentences.length; i+=2) {
-      chunks.push(sentences.slice(i,i+2).join(" ").trim());
+    for (let i = 0; i < sentences.length; i += 2) {
+      chunks.push(sentences.slice(i, i + 2).join(" ").trim());
     }
   }
+
+  // Restore abbreviations after splitting.
+  chunks = chunks.map(chunk => {
+    for (const [token, abbr] of placeholders) {
+      chunk = chunk.replaceAll(token, abbr);
+    }
+    return chunk;
+  });
 
   if (chunks.length === 1 && chunks[0].length > 380) {
     const words = chunks[0].split(/\s+/);
     chunks = [];
-    for (let i=0; i<words.length; i+=65) chunks.push(words.slice(i,i+65).join(" "));
+    for (let i = 0; i < words.length; i += 65) {
+      chunks.push(words.slice(i, i + 65).join(" "));
+    }
   }
-  return chunks.slice(0,20);
+
+  return chunks.slice(0, 20);
 }
 
 function escapeRegex(text) {
@@ -120,7 +143,7 @@ function makePrompt(scene, index) {
     ? places.join(", ")
     : "Environment should follow the location described in the scene.";
 
-  return `Cinematic story illustration, scene ${index+1}. ${scene}
+  return `MY AI STUDIO CHARACTER ENGINE V3. Cinematic story illustration, scene ${index+1}. ${scene}
 
 CHARACTER CONSISTENCY:
 ${characterBlock}
