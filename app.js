@@ -367,7 +367,7 @@ VISUAL DIRECTION:
 ${VISUAL_STYLE}
 
 IMPORTANT:
-Only the named story characters listed in GLOBAL CHARACTER REFERENCE are characters. Words such as Without, Together, When, But, Carefully, That, From and Adventure are ordinary English words, NOT characters. Never create a character from a sentence starter, pronoun, adjective, adverb, conjunction, preposition or other grammar word. Do not change character faces, fur colors, clothing, age, hairstyle or proportions. Depict the exact action described in this scene.`;
+Only characters manually added to GLOBAL CHARACTER REFERENCE are approved characters. Words such as Without, Together, When, But, Carefully, That, From and Adventure are ordinary English words, NOT characters. Never create a character from a sentence starter, pronoun, adjective, adverb, conjunction, preposition or other grammar word. Do not change character faces, fur colors, clothing, age, hairstyle or proportions. Depict the exact action described in this scene.`;
 }
 
 async function analyze() {
@@ -386,82 +386,28 @@ async function analyze() {
     const chunks = splitStory(story);
     if (!chunks.length) throw new Error("Please enter a readable story.");
 
-    let aiData = null;
-    try {
-      aiData = await askStoryAI(story);
-    } catch (err) {
-      console.warn("AI endpoint unavailable; using local story analysis.", err);
-    }
-
-    let allNames = [];
-    let sceneCast = [];
-    let allPlaces = [];
-
-    if (aiData && Array.isArray(aiData.characters)) {
-      for (const item of aiData.characters) {
-        if (!item || !item.name) continue;
-        const name = String(item.name).trim();
-        if (!name) continue;
-        const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-        CHARACTER_DB.push({
-          name,
-          aliases: [...new Set([name, ...aliases].filter(Boolean))],
-          description: item.description || `A consistent story character: ${name}. Preserve the same design in every scene.`
-        });
-      }
-      allNames = [...new Set(aiData.characters.map(c => c && c.name).filter(Boolean))];
-      const aiScenes = Array.isArray(aiData.scenes) ? aiData.scenes : [];
-      sceneCast = chunks.map((scene, i) => {
-        const match = aiScenes[i];
-        return match && Array.isArray(match.characterNames)
-          ? match.characterNames.filter(n => allNames.includes(n))
-          : [];
-      });
-      allPlaces = Array.isArray(aiData.environments) ? aiData.environments : [];
-    } else {
-      discoverCustomCharacters(story);
-      allNames = [...new Set(CHARACTER_DB
-        .filter(c => !BUILTIN_CHARACTERS.some(b => b.name === c.name) || detectCharacters(story).includes(c.name))
-        .filter(c => containsPhrase(story, c.name) || c.aliases.some(a => containsPhrase(story, a)))
-        .map(c => c.name))];
-      sceneCast = chunks.map(scene => detectCharacters(scene).filter(n => allNames.includes(n)));
-      allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
-    }
-
-    const customDescriptions = aiData && Array.isArray(aiData.characters)
-      ? new Map(aiData.characters.map(c => [c.name, c.description || ""]))
-      : new Map();
+    // Manual character mode: never infer characters from story text.
+    // Users add every character explicitly in the Character List below.
+    const allNames = [];
+    const sceneCast = chunks.map(() => []);
+    const allPlaces = [...new Set(chunks.flatMap(scene => detectEnvironments(scene)))];
 
     currentProject = {
       id: Date.now(),
       name: safeText("projectName").trim() || "Untitled Story",
       story,
-      characters: allNames.map(name => ({
-        name,
-        description: customDescriptions.get(name) || characterDescription(name)
-      })),
+      characters: [],
       environments: allPlaces,
       scenes: chunks.map((scene, i) => ({
         title: `Scene ${i + 1}`,
         description: scene,
         characters: sceneCast[i] || [],
-        environments: (aiData && aiData.scenes && aiData.scenes[i] && aiData.scenes[i].environmentNames)
-          || detectEnvironments(scene),
+        environments: detectEnvironments(scene),
         prompt: makePrompt(scene, i, allNames, allPlaces)
       })),
       created: new Date().toISOString(),
-      analysisMode: aiData ? "ai" : "local-fallback"
+      analysisMode: "manual-characters"
     };
-
-    // Use the AI's scene-specific cast in the final prompts.
-    currentProject.scenes.forEach((scene, i) => {
-      if (scene.characters.length) {
-        scene.prompt = scene.prompt.replace(
-          /CHARACTERS TO SHOW IN THIS SCENE:[\s\S]*?(?=\n\nENVIRONMENT AND CONTINUITY:)/,
-          `CHARACTERS TO SHOW IN THIS SCENE:\n${scene.characters.join(", ")}.\nShow only these characters if they are explicitly present in the scene.`
-        );
-      }
-    });
 
     renderProject();
     if ($("results")) {
@@ -535,6 +481,26 @@ function renderProject() {
   if ($("characterList")) {
     $("characterList").innerHTML = "";
 
+    const manualBox = document.createElement("div");
+    manualBox.className = "manual-character-controls";
+    const manualHint = document.createElement("p");
+    manualHint.textContent = "Automatic character detection is OFF. Add characters manually.";
+    const manualInput = document.createElement("input");
+    manualInput.id = "manualCharacterName";
+    manualInput.type = "text";
+    manualInput.placeholder = "Enter character name (e.g. Finn, Mama Fox, Mother)";
+    manualInput.setAttribute("aria-label", "Character name");
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "secondary";
+    addButton.textContent = "+ Add Character";
+    addButton.addEventListener("click", addManualCharacter);
+    manualInput.addEventListener("keydown", event => {
+      if (event.key === "Enter") addManualCharacter();
+    });
+    manualBox.append(manualHint, manualInput, addButton);
+    $("characterList").appendChild(manualBox);
+
     currentProject.characters.forEach((character, i) => {
       const el = document.createElement("div");
       el.className = "character";
@@ -549,10 +515,44 @@ function renderProject() {
       input.value = character.description;
       input.dataset.character = String(i);
 
-      el.append(heading, label, input);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "secondary";
+      removeButton.textContent = "Remove";
+      removeButton.addEventListener("click", () => {
+        currentProject.characters.splice(i, 1);
+        CHARACTER_DB = CHARACTER_DB.filter(c => c.name.toLowerCase() !== character.name.toLowerCase());
+        refreshAllScenePrompts();
+        renderProject();
+      });
+      el.append(heading, label, input, removeButton);
       $("characterList").appendChild(el);
     });
   }
+}
+
+function addManualCharacter() {
+  if (!currentProject) return;
+  const input = $("manualCharacterName");
+  const name = String(input && input.value || "").trim().replace(/\s+/g, " ");
+  if (!name) { alert("Enter a character name first."); return; }
+  if (currentProject.characters.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+    alert("This character is already in the list.");
+    return;
+  }
+  const description = `A story character named ${name}. Keep the same identity, species, face, colors, clothing and proportions in every scene.`;
+  currentProject.characters.push({ name, description });
+  CHARACTER_DB.push({ name, aliases: [name], description });
+  refreshAllScenePrompts();
+  renderProject();
+}
+
+function refreshAllScenePrompts() {
+  if (!currentProject) return;
+  const names = currentProject.characters.map(c => c.name);
+  currentProject.scenes.forEach((scene, i) => {
+    scene.prompt = makePrompt(scene.description, i, names, currentProject.environments || []);
+  });
 }
 
 function escapeHtml(value) {
